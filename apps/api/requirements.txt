@@ -1,0 +1,14 @@
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+sqlalchemy==2.0.43
+alembic==1.16.4
+psycopg[binary]==3.2.13
+pydantic-settings==2.10.1
+email-validator==2.2.0
+httpx==0.28.1
+requests==2.32.5
+beautifulsoup4==4.14.3
+python-jose[cryptography]==3.5.0
+passlib[argon2]==1.7.4
+celery==5.5.3
+redis==6.4.0

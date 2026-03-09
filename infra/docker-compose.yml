@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: socintel_v2_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-socintel_v2}
+      POSTGRES_USER: ${POSTGRES_USER:-socintel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:8
+    container_name: socintel_v2_redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
