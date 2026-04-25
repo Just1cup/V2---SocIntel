@@ -1142,6 +1142,45 @@ select {
   gap: 18px;
 }
 
+.threat-hero-panel {
+  background:
+    radial-gradient(circle at top right, rgba(124, 58, 237, 0.18), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent),
+    var(--panel);
+}
+
+.threat-hero-head {
+  align-items: flex-start;
+}
+
+.threat-hero-head h2 {
+  font-size: clamp(28px, 4vw, 44px);
+  margin-bottom: 6px;
+}
+
+.threat-command-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: rgba(8, 5, 15, 0.48);
+}
+
+.threat-command-bar input {
+  border: 0;
+  background: transparent;
+  padding: 10px 0;
+}
+
+.threat-command-prompt {
+  color: var(--accent);
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 800;
+}
+
 .threat-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1150,7 +1189,7 @@ select {
 
 .threat-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(300px, 0.58fr) minmax(0, 1.42fr);
   gap: 20px;
   align-items: start;
 }
@@ -1169,17 +1208,48 @@ select {
   padding-right: 4px;
 }
 
+.threat-results-panel {
+  min-width: 0;
+}
+
+.threat-type-filter {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .threat-object-card {
   width: 100%;
   display: grid;
   gap: 10px;
   text-align: left;
-  padding: 16px;
-  border-radius: 16px;
+  padding: 16px 18px;
+  border-radius: 18px;
   border: 1px solid var(--border);
+  border-left: 4px solid rgba(124, 58, 237, 0.42);
   color: var(--text);
-  background: var(--panel-2);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
+    var(--panel-2);
   cursor: pointer;
+}
+
+.threat-object-card-high {
+  border-left-color: var(--danger);
+}
+
+.threat-object-card-medium {
+  border-left-color: var(--warning);
+}
+
+.threat-object-card-low {
+  border-left-color: var(--success);
+}
+
+.threat-object-card-muted {
+  border-left-color: var(--muted);
+  opacity: 0.76;
 }
 
 .threat-object-card-active {
@@ -1197,6 +1267,21 @@ select {
   overflow: hidden;
 }
 
+.threat-object-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.threat-object-tags span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .threat-json-view {
   margin: 0;
   max-height: 560px;
@@ -1210,6 +1295,40 @@ select {
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.threat-bottom-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.55fr) minmax(0, 1.45fr);
+  gap: 20px;
+}
+
+.threat-distribution-list {
+  display: grid;
+  gap: 13px;
+}
+
+.threat-distribution-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.threat-distribution-row > span:first-child {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.threat-distribution-row > strong {
+  color: var(--accent);
+}
+
+.threat-distribution-row > span:last-child {
+  grid-column: 1 / -1;
+  height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
 }
 
 .threat-detail-modal {
@@ -1418,6 +1537,7 @@ select {
   .mitre-summary-grid,
   .threat-summary-grid,
   .threat-grid,
+  .threat-bottom-grid,
   .threat-detail-grid,
   .threat-detail-content,
   .threat-reference-list,

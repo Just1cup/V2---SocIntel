@@ -23,6 +23,28 @@ function summarizeObject(stixObject) {
   };
 }
 
+function objectTone(stixObject) {
+  if (stixObject.revoked) return "muted";
+  if (["malware", "intrusion-set", "campaign"].includes(stixObject.type)) return "high";
+  if (["tool", "indicator"].includes(stixObject.type)) return "medium";
+  return "low";
+}
+
+function objectTags(stixObject) {
+  return [
+    externalIdFor(stixObject),
+    ...(stixObject.x_mitre_domains || []),
+    ...(stixObject.x_mitre_platforms || []).slice(0, 2),
+  ].filter(Boolean);
+}
+
+function feedTypeCounts(objects) {
+  return objects.reduce((acc, item) => {
+    acc[item.type] = (acc[item.type] || 0) + 1;
+    return acc;
+  }, {});
+}
+
 function compactJson(value) {
   return JSON.stringify(value, null, 2);
 }
@@ -203,6 +225,7 @@ export function ThreatIntellView({ token }) {
   const [objectsPayload, setObjectsPayload] = useState(null);
   const [manifestPayload, setManifestPayload] = useState(null);
   const [activeObject, setActiveObject] = useState(null);
+  const [quickSearch, setQuickSearch] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -257,6 +280,18 @@ export function ThreatIntellView({ token }) {
 
   const objects = useMemo(() => objectsPayload?.data?.objects || [], [objectsPayload]);
   const manifestObjects = useMemo(() => manifestPayload?.data?.objects || [], [manifestPayload]);
+  const filteredObjects = useMemo(() => {
+    const term = quickSearch.trim().toLowerCase();
+    if (!term) return objects;
+    return objects.filter((item) => {
+      const summary = summarizeObject(item);
+      return [summary.name, summary.externalId, summary.id, summary.type, summary.description]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term));
+    });
+  }, [objects, quickSearch]);
+  const typeCounts = useMemo(() => feedTypeCounts(objects), [objects]);
+  const selectedSource = useMemo(() => sources.find((source) => source.id === selectedSourceId), [sources, selectedSourceId]);
 
   async function loadManifest(event) {
     event.preventDefault();
@@ -297,21 +332,33 @@ export function ThreatIntellView({ token }) {
 
   return (
     <section className="threat-layout">
-      <div className="panel threat-panel">
-        <div className="panel-head">
+      <div className="panel threat-panel threat-hero-panel">
+        <div className="panel-head threat-hero-head">
           <div>
             <p className="eyebrow">TAXII 2.1 • Threat Intelligence Feeds</p>
             <h2>Threat Intell</h2>
+            <p className="muted-line">Consulta operacional de fontes STIX/TAXII com leitura estruturada para analistas.</p>
           </div>
           <div className="mitre-meta-strip">
-            <span className="mitre-chip">Fonte: MITRE ATT&CK</span>
+            <span className="mitre-chip">Fonte: {selectedSource?.name || "MITRE ATT&CK"}</span>
             <span className="mitre-chip">Formato: STIX 2.1</span>
           </div>
         </div>
 
-        <div className="mitre-status" aria-live="polite">
-          {status}
+        <div className="threat-command-bar">
+          <span className="threat-command-prompt">&gt;_</span>
+          <input
+            type="search"
+            value={quickSearch}
+            onChange={(event) => setQuickSearch(event.target.value)}
+            placeholder="Filtrar objetos carregados por nome, ID, tipo ou descrição"
+          />
+          <button className="ghost-button" type="button" onClick={() => setQuickSearch("")}>
+            Limpar
+          </button>
         </div>
+
+        <div className="mitre-status" aria-live="polite">{status}</div>
 
         <div className="threat-summary-grid">
           <article className="mitre-summary-card">
@@ -406,23 +453,31 @@ export function ThreatIntellView({ token }) {
           </form>
         </aside>
 
-        <section className="panel threat-panel">
+        <section className="panel threat-panel threat-results-panel">
           <div className="panel-head">
             <div>
               <h2>Objetos STIX</h2>
-              <p className="muted-line">Resultados retornados diretamente do feed TAXII configurado.</p>
+              <p className="muted-line">{filteredObjects.length} em exibição de {objects.length} retornados.</p>
+            </div>
+            <div className="threat-type-filter">
+              {OBJECT_TYPES.slice(0, 5).map((type) => (
+                <button key={type} type="button" className={`type-pill ${filters.type === type ? "type-pill-active" : ""}`} onClick={() => setFilters((current) => ({ ...current, type }))}>
+                  {typeCounts[type] || 0} {type}
+                </button>
+              ))}
             </div>
           </div>
 
-          {objects.length ? (
+          {filteredObjects.length ? (
             <div className="threat-object-list">
-              {objects.map((item) => {
+              {filteredObjects.map((item) => {
                 const summary = summarizeObject(item);
+                const tone = objectTone(item);
                 return (
                   <button
                     key={`${summary.id}-${summary.modified}`}
                     type="button"
-                    className={`threat-object-card ${activeObject?.id === item.id ? "threat-object-card-active" : ""}`}
+                    className={`threat-object-card threat-object-card-${tone} ${activeObject?.id === item.id ? "threat-object-card-active" : ""}`}
                     onClick={() => setActiveObject(item)}
                   >
                     <span className="history-card-top">
@@ -431,6 +486,11 @@ export function ThreatIntellView({ token }) {
                     </span>
                     <span className="muted-line">{summary.externalId || summary.id}</span>
                     {summary.description ? <p>{summary.description}</p> : null}
+                    <span className="threat-object-tags">
+                      {objectTags(item).map((tag) => (
+                        <span key={tag}>{tag}</span>
+                      ))}
+                    </span>
                     {summary.modified ? <small>{summary.modified}</small> : null}
                   </button>
                 );
@@ -445,14 +505,40 @@ export function ThreatIntellView({ token }) {
         </section>
       </div>
 
-      <div className="panel threat-panel">
-        <div className="panel-head">
-          <div>
-            <h2>{activeObject ? "Objeto selecionado" : "Manifesto / Detalhe"}</h2>
-            <p className="muted-line">Visualização JSON para inspeção técnica e integração futura.</p>
+      <div className="threat-bottom-grid">
+        <div className="panel threat-panel">
+          <div className="panel-head">
+            <div>
+              <h2>Distribuição do feed</h2>
+              <p className="muted-line">Resumo dos objetos retornados por tipo STIX.</p>
+            </div>
+          </div>
+          <div className="threat-distribution-list">
+            {Object.entries(typeCounts).length ? (
+              Object.entries(typeCounts)
+                .sort((a, b) => b[1] - a[1])
+                .map(([type, count]) => (
+                  <div className="threat-distribution-row" key={type}>
+                    <span>{type}</span>
+                    <strong>{count}</strong>
+                    <span style={{ width: `${Math.max(10, (count / Math.max(objects.length, 1)) * 100)}%` }} />
+                  </div>
+                ))
+            ) : (
+              <p className="muted-line">Execute uma consulta para ver distribuição.</p>
+            )}
           </div>
         </div>
-        <pre className="threat-json-view">{compactJson(activeObject || manifestPayload?.data || objectsPayload?.data || {})}</pre>
+
+        <div className="panel threat-panel">
+          <div className="panel-head">
+            <div>
+              <h2>Manifesto / Detalhe</h2>
+              <p className="muted-line">Preview bruto para inspeção técnica e integrações futuras.</p>
+            </div>
+          </div>
+          <pre className="threat-json-view">{compactJson(manifestPayload?.data || objectsPayload?.data || {})}</pre>
+        </div>
       </div>
 
       <ThreatObjectModal stixObject={activeObject} onClose={() => setActiveObject(null)} />
