@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     auth_cookie_samesite: str = "lax"
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 300
+    taxii_request_timeout_seconds: float = 20.0
+    taxii_cache_ttl_seconds: int = 600
+    taxii_mitre_base_url: str = "https://attack-taxii.mitre.org"
+    taxii_mitre_api_root: str = "/api/v21"
 
     @property
     def cors_origin_list(self) -> list[str]:

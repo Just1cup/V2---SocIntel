@@ -90,6 +90,13 @@ Legacy adapter path:
 
 - `LEGACY_BACKEND_PATH=/path/to/socintel-legacy-backend`
 
+TAXII threat intelligence feed:
+
+- Default source: MITRE ATT&CK TAXII 2.1 at `https://attack-taxii.mitre.org/api/v21`
+- API prefix: `/api/v1/threat-feeds/taxii`
+- Object queries require at least one filter (`type`, `id`, or `added_after`) to avoid pulling large TAXII collections and to respect MITRE's public rate limits.
+- Optional settings: `TAXII_REQUEST_TIMEOUT_SECONDS`, `TAXII_CACHE_TTL_SECONDS`, `TAXII_MITRE_BASE_URL`, `TAXII_MITRE_API_ROOT`
+
 ### Web
 
 ```bash
