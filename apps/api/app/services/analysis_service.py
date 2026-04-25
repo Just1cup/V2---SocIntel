@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.analysis_job import AnalysisJob
 from app.models.analysis_result import AnalysisResult
 from app.models.user import User
+from app.services.audit_service import AuditService
 from app.workers.tasks import process_analysis_job
 
 
@@ -21,14 +22,10 @@ class AnalysisService:
         user: User,
         ioc_type: str,
         ioc_value: str,
-        case_id: str | None = None,
-        investigation_id: str | None = None,
-    ) -> AnalysisJob:
+    ) -> AnalysisJob | None:
         job = AnalysisJob(
             id=f"job_{uuid4().hex[:24]}",
             tenant_id=user.tenant_id,
-            case_id=case_id,
-            investigation_id=investigation_id,
             owner_user_id=user.id,
             requested_by_user_id=user.id,
             team_id=None,
@@ -38,13 +35,20 @@ class AnalysisService:
             priority="normal",
         )
         self.db.add(job)
+        AuditService(self.db).record(
+            action="analysis_job_created",
+            resource_type="analysis_job",
+            resource_id=job.id,
+            actor=user,
+            details={"ioc_type": ioc_type},
+        )
         self.db.commit()
         self.db.refresh(job)
         process_analysis_job.delay(job.id)
         return job
 
     def get_job_for_user(self, user: User, job_id: str) -> AnalysisJob | None:
-        return (
+        job = (
             self.db.query(AnalysisJob)
             .filter(
                 AnalysisJob.id == job_id,
@@ -52,22 +56,19 @@ class AnalysisService:
             )
             .first()
         )
+        if not job or not self._can_access_job(user, job):
+            return None
+        return job
 
-    def list_jobs_for_user(
-        self,
-        user: User,
-        *,
-        case_id: str | None = None,
-        investigation_id: str | None = None,
-    ) -> list[AnalysisJob]:
+    def list_jobs_for_user(self, user: User) -> list[AnalysisJob]:
         query = self.db.query(AnalysisJob).filter(AnalysisJob.tenant_id == user.tenant_id)
-        if case_id:
-            query = query.filter(AnalysisJob.case_id == case_id)
-        if investigation_id:
-            query = query.filter(AnalysisJob.investigation_id == investigation_id)
-        return query.order_by(AnalysisJob.created_at.desc()).limit(50).all()
+        jobs = query.order_by(AnalysisJob.created_at.desc()).limit(50).all()
+        return [job for job in jobs if self._can_access_job(user, job)]
 
     def get_result_for_user(self, user: User, job_id: str) -> AnalysisResult | None:
+        job = self.get_job_for_user(user, job_id)
+        if not job:
+            return None
         return (
             self.db.query(AnalysisResult)
             .join(AnalysisJob, AnalysisResult.job_id == AnalysisJob.id)
@@ -77,6 +78,13 @@ class AnalysisService:
             )
             .first()
         )
+
+    def _can_access_job(self, user: User, job: AnalysisJob) -> bool:
+        if user.role == "admin":
+            return True
+        if job.owner_user_id == user.id or job.requested_by_user_id == user.id:
+            return True
+        return False
 
     @staticmethod
     def decode_json(value: str | None, fallback):

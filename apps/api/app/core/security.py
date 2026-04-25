@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
 import secrets
 
 from jose import jwt
@@ -13,12 +14,17 @@ def create_access_token(subject: str, expires_delta: timedelta, extra_claims: di
     now = datetime.now(timezone.utc)
     payload = {
         "sub": subject,
+        "jti": secrets.token_urlsafe(24),
         "iat": int(now.timestamp()),
         "exp": int((now + expires_delta).timestamp()),
     }
     if extra_claims:
         payload.update(extra_claims)
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def hash_password(password: str) -> str:

@@ -8,6 +8,7 @@ WEB_DIR="$ROOT_DIR/apps/web"
 INFRA_DIR="$ROOT_DIR/infra"
 RUN_DIR="$ROOT_DIR/.run"
 LOG_DIR="$ROOT_DIR/logs"
+WEB_HOST="${SOCINTEL_WEB_HOST:-127.0.0.1}"
 
 mkdir -p "$RUN_DIR" "$LOG_DIR"
 
@@ -35,7 +36,11 @@ is_running() {
   fi
   local pid
   pid="$(cat "$pid_file")"
-  kill -0 "$pid" >/dev/null 2>&1
+  if kill -0 "$pid" >/dev/null 2>&1; then
+    return 0
+  fi
+  rm -f "$pid_file"
+  return 1
 }
 
 start_process() {
@@ -52,6 +57,13 @@ start_process() {
   "$@" >"$log_file" 2>&1 &
   local pid=$!
   echo "$pid" >"$pid_file"
+  sleep 0.2
+  if ! kill -0 "$pid" >/dev/null 2>&1; then
+    echo "$name failed to start. Last log lines:"
+    tail -n 40 "$log_file" || true
+    rm -f "$pid_file"
+    exit 1
+  fi
   echo "Started $name (pid $pid)"
 }
 
@@ -66,6 +78,23 @@ require_command npm
 require_command bash
 require_file "$API_DIR/.venv/bin/python" "Missing API virtualenv. Create it in apps/api before running this script."
 require_file "$WEB_DIR/node_modules" "Missing frontend dependencies. Run npm install in apps/web before running this script."
+
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.env"
+  set +a
+fi
+
+if [[ -z "${JWT_SECRET:-}" || "${JWT_SECRET}" == "change-me" || ${#JWT_SECRET} -lt 32 ]]; then
+  echo "Set JWT_SECRET to a strong random value of at least 32 characters before starting."
+  exit 1
+fi
+
+if [[ -z "${POSTGRES_PASSWORD:-}" || -z "${REDIS_PASSWORD:-}" ]]; then
+  echo "Set POSTGRES_PASSWORD and REDIS_PASSWORD before starting."
+  exit 1
+fi
 
 echo "Starting infrastructure..."
 (cd "$INFRA_DIR" && docker compose up -d)
@@ -95,12 +124,15 @@ start_process \
   "web" \
   "$RUN_DIR/web.pid" \
   "$LOG_DIR/web.log" \
-  bash -lc "cd '$WEB_DIR' && exec npm run dev -- --host 0.0.0.0"
+  bash -lc "cd '$WEB_DIR' && exec npm run dev -- --host '$WEB_HOST'"
 
 echo
 echo "SOCINTEL - V2 is starting."
-echo "Frontend: http://localhost:5173"
-echo "API:      http://localhost:8000/docs"
+echo "Frontend: http://$WEB_HOST:5173"
+echo "API:      http://127.0.0.1:8000/health"
+if [[ "${EXPOSE_API_DOCS:-false}" == "true" ]]; then
+  echo "Docs:     http://127.0.0.1:8000/docs"
+fi
 echo
 echo "Logs:"
 echo "- $LOG_DIR/api.log"

@@ -9,8 +9,6 @@ class AnalysisJob(TenantOwnedMixin, TimestampMixin, Base):
     __tablename__ = "analysis_jobs"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    case_id: Mapped[str | None] = mapped_column(ForeignKey("cases.id"), nullable=True, index=True)
-    investigation_id: Mapped[str | None] = mapped_column(ForeignKey("investigations.id"), nullable=True, index=True)
     owner_user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     team_id: Mapped[str | None] = mapped_column(ForeignKey("teams.id"), nullable=True, index=True)
     ioc_type: Mapped[str] = mapped_column(String(32), index=True)

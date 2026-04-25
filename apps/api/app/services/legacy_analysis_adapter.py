@@ -37,9 +37,16 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
+def _resolve_ioc_type(ioc_type: str, ioc_value: str) -> str:
+    if ioc_type == "domain_email":
+        return "email" if "@" in ioc_value else "domain"
+    return ioc_type
+
+
 def run_legacy_analysis(ioc_type: str, ioc_value: str) -> dict[str, Any]:
     analyze = _load_legacy_analyze()
-    result = analyze(ioc_type, ioc_value)
+    resolved_ioc_type = _resolve_ioc_type(ioc_type, ioc_value)
+    result = analyze(resolved_ioc_type, ioc_value)
     payload = {
         "risk": result.risk,
         "level": str(result.level).lower(),

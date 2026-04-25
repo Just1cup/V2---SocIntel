@@ -9,7 +9,6 @@
 ## Phase 2
 
 - Add authentication and user management
-- Persist cases and investigations
 - Create analysis job lifecycle
 
 ## Phase 3

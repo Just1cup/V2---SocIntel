@@ -1,4 +1,12 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
+function defaultApiBaseUrl() {
+  if (typeof window === "undefined") {
+    return "http://localhost:8000/api/v1";
+  }
+  const host = window.location.hostname || "localhost";
+  return `http://${host}:8000/api/v1`;
+}
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl();
 
 function buildHeaders(options = {}) {
   return {
@@ -18,11 +26,15 @@ async function request(path, options = {}) {
   });
 
   let payload = null;
+  if (response.status === 204) {
+    return null;
+  }
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
     payload = await response.json();
   } else {
-    payload = await response.text();
+    const text = await response.text();
+    payload = text || null;
   }
 
   if (!response.ok) {
@@ -47,29 +59,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  logout: () =>
+  logout: (token) =>
     request("/auth/logout", {
       method: "POST",
-    }),
-  listCases: (token) =>
-    request("/cases/", {
       token,
-    }),
-  createCase: (token, payload) =>
-    request("/cases/", {
-      method: "POST",
-      token,
-      body: JSON.stringify(payload),
-    }),
-  listInvestigations: (token, caseId) =>
-    request(`/cases/${caseId}/investigations`, {
-      token,
-    }),
-  createInvestigation: (token, caseId, payload) =>
-    request(`/cases/${caseId}/investigations`, {
-      method: "POST",
-      token,
-      body: JSON.stringify(payload),
     }),
   createAnalysisJob: (token, payload) =>
     request("/analysis-jobs/", {
@@ -93,13 +86,15 @@ export const api = {
       token,
       body: JSON.stringify(payload),
     }),
-  listAnalysisJobs: (token, filters = {}) => {
-    const params = new URLSearchParams();
-    if (filters.case_id) params.set("case_id", filters.case_id);
-    if (filters.investigation_id) params.set("investigation_id", filters.investigation_id);
-    const suffix = params.toString() ? `?${params.toString()}` : "";
-    return request(`/analysis-jobs/${suffix}`, { token });
-  },
+  listAnalysisJobs: (token) => request("/analysis-jobs/", { token }),
   getAnalysisJob: (token, jobId) => request(`/analysis-jobs/${jobId}`, { token }),
   getAnalysisResult: (token, jobId) => request(`/analysis-jobs/${jobId}/result`, { token }),
+  getMitreIndex: (token) =>
+    request("/mitre/index", {
+      token,
+    }),
+  getMitreTechniqueDetail: (token, externalId) =>
+    request(`/mitre/techniques/${encodeURIComponent(externalId)}`, {
+      token,
+    }),
 };

@@ -20,8 +20,6 @@
 - users
 - teams
 - memberships
-- cases
-- investigations
 - analysis_jobs
 - analysis_results
 - search_history
@@ -32,7 +30,6 @@
 - Every business entity is tenant-scoped.
 - `owner_user_id` defines private ownership.
 - `team_id` is optional and enables collaboration inside the tenant.
-- Cases and investigations use soft delete so auditability is preserved.
 - Analysis jobs and results are immutable enough to preserve traceability.
 
 ## Migration Strategy

@@ -27,19 +27,10 @@
 - join table between users and teams
 - scoped by tenant
 
-### cases
-
-- top-level investigation container
-- supports `private` or `team` visibility
-
-### investigations
-
-- scoped workstream inside a case
-
 ### analysis_jobs
 
 - async execution request for IOC enrichment
-- linked to case and investigation when present
+- owned by the requesting analyst and scoped to the analyst tenant
 
 ### analysis_results
 

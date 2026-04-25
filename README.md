@@ -6,12 +6,12 @@ SOCINTEL - V2 is the multiuser foundation for the next generation of the SOCINTE
 
 - Support multiple concurrent analysts with isolated data contexts.
 - Replace the desktop-local execution model with a client-server architecture.
-- Persist cases, investigations, analysis jobs, and audit events centrally.
+- Persist analysis jobs, analysis results, search history, and audit events centrally.
 - Prepare the platform for teams and multi-tenant expansion.
 
 ## Initial Architecture
 
-- `apps/api`: FastAPI application for authentication, cases, investigations, and analysis jobs.
+- `apps/api`: FastAPI application for authentication, user management, MITRE catalog access, and analysis jobs.
 - `apps/worker`: background worker process for async analysis execution.
 - `apps/web`: web frontend entrypoint.
 - `packages/shared`: shared contracts and documentation placeholders.
@@ -38,8 +38,6 @@ The current scaffold already includes tenant-aware domain models for:
 - tenants
 - users
 - teams and memberships
-- cases
-- investigations
 - analysis jobs
 - analysis results
 - search history
@@ -48,6 +46,8 @@ The current scaffold already includes tenant-aware domain models for:
 ## Bootstrapping
 
 ### API
+
+Create a local `.env` from `.env.example` and replace every placeholder secret with a generated value before starting the API. The API refuses to start with an empty, short, or default `JWT_SECRET`.
 
 ```bash
 cd "apps/api"
@@ -81,10 +81,10 @@ source .venv/bin/activate
 PYTHONPATH=. celery -A app.workers.celery_app:celery_app worker --loglevel=info
 ```
 
-Default bootstrap credentials:
+Bootstrap admin credentials:
 
 - email: `admin@socintel.dev`
-- password: `Admin@123`
+- password: set `SOCINTEL_BOOTSTRAP_ADMIN_PASSWORD`, or read the generated password printed the first time `scripts/seed.py` creates the admin user
 
 Legacy adapter path:
 
@@ -104,17 +104,34 @@ Optional frontend API target:
 VITE_API_BASE_URL=http://localhost:8000/api/v1 npm run dev
 ```
 
+Optional Vite hardening overrides:
+
+```bash
+VITE_DEV_HOST=127.0.0.1
+VITE_DEV_PORT=5173
+VITE_ALLOWED_HOSTS=localhost,127.0.0.1
+```
+
 ### Infra
 
 ```bash
 cd "infra"
+set -a && source ../.env && set +a
 docker compose up -d
 ```
+
+PostgreSQL and Redis are bound to `127.0.0.1` for local development. Redis requires `REDIS_PASSWORD`; PostgreSQL requires `POSTGRES_PASSWORD`.
 
 ### Full App Startup
 
 ```bash
 ./scripts/run_app.sh
+```
+
+The launcher starts Vite bound to `127.0.0.1` by default. To expose it intentionally on another interface, set:
+
+```bash
+SOCINTEL_WEB_HOST=0.0.0.0 ./scripts/run_app.sh
 ```
 
 To stop API, worker, and web:

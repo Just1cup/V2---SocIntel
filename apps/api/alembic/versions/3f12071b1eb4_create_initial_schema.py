@@ -66,25 +66,6 @@ def upgrade() -> None:
     op.create_index(op.f('ix_audit_logs_resource_id'), 'audit_logs', ['resource_id'], unique=False)
     op.create_index(op.f('ix_audit_logs_resource_type'), 'audit_logs', ['resource_type'], unique=False)
     op.create_index(op.f('ix_audit_logs_tenant_id'), 'audit_logs', ['tenant_id'], unique=False)
-    op.create_table('cases',
-    sa.Column('id', sa.String(length=64), nullable=False),
-    sa.Column('owner_user_id', sa.String(length=64), nullable=False),
-    sa.Column('team_id', sa.String(length=64), nullable=True),
-    sa.Column('name', sa.String(length=255), nullable=False),
-    sa.Column('description', sa.String(length=2000), nullable=True),
-    sa.Column('status', sa.String(length=32), nullable=False),
-    sa.Column('visibility', sa.String(length=32), nullable=False),
-    sa.Column('tenant_id', sa.String(length=64), nullable=False),
-    sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['owner_user_id'], ['users.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_cases_owner_user_id'), 'cases', ['owner_user_id'], unique=False)
-    op.create_index(op.f('ix_cases_team_id'), 'cases', ['team_id'], unique=False)
-    op.create_index(op.f('ix_cases_tenant_id'), 'cases', ['tenant_id'], unique=False)
-    op.create_index(op.f('ix_cases_visibility'), 'cases', ['visibility'], unique=False)
     op.create_table('teams',
     sa.Column('id', sa.String(length=64), nullable=False),
     sa.Column('name', sa.String(length=255), nullable=False),
@@ -101,25 +82,6 @@ def upgrade() -> None:
     op.create_index(op.f('ix_teams_name'), 'teams', ['name'], unique=False)
     op.create_index(op.f('ix_teams_slug'), 'teams', ['slug'], unique=False)
     op.create_index(op.f('ix_teams_tenant_id'), 'teams', ['tenant_id'], unique=False)
-    op.create_table('investigations',
-    sa.Column('id', sa.String(length=64), nullable=False),
-    sa.Column('case_id', sa.String(length=64), nullable=False),
-    sa.Column('owner_user_id', sa.String(length=64), nullable=False),
-    sa.Column('title', sa.String(length=255), nullable=False),
-    sa.Column('summary', sa.String(length=4000), nullable=True),
-    sa.Column('status', sa.String(length=32), nullable=False),
-    sa.Column('tenant_id', sa.String(length=64), nullable=False),
-    sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['case_id'], ['cases.id'], ),
-    sa.ForeignKeyConstraint(['owner_user_id'], ['users.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_investigations_case_id'), 'investigations', ['case_id'], unique=False)
-    op.create_index(op.f('ix_investigations_owner_user_id'), 'investigations', ['owner_user_id'], unique=False)
-    op.create_index(op.f('ix_investigations_status'), 'investigations', ['status'], unique=False)
-    op.create_index(op.f('ix_investigations_tenant_id'), 'investigations', ['tenant_id'], unique=False)
     op.create_table('team_memberships',
     sa.Column('id', sa.String(length=64), nullable=False),
     sa.Column('team_id', sa.String(length=64), nullable=False),
@@ -139,8 +101,6 @@ def upgrade() -> None:
     op.create_index(op.f('ix_team_memberships_user_id'), 'team_memberships', ['user_id'], unique=False)
     op.create_table('analysis_jobs',
     sa.Column('id', sa.String(length=64), nullable=False),
-    sa.Column('case_id', sa.String(length=64), nullable=True),
-    sa.Column('investigation_id', sa.String(length=64), nullable=True),
     sa.Column('owner_user_id', sa.String(length=64), nullable=False),
     sa.Column('team_id', sa.String(length=64), nullable=True),
     sa.Column('ioc_type', sa.String(length=32), nullable=False),
@@ -153,15 +113,11 @@ def upgrade() -> None:
     sa.Column('tenant_id', sa.String(length=64), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.ForeignKeyConstraint(['case_id'], ['cases.id'], ),
-    sa.ForeignKeyConstraint(['investigation_id'], ['investigations.id'], ),
     sa.ForeignKeyConstraint(['owner_user_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['requested_by_user_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['team_id'], ['teams.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
-    op.create_index(op.f('ix_analysis_jobs_case_id'), 'analysis_jobs', ['case_id'], unique=False)
-    op.create_index(op.f('ix_analysis_jobs_investigation_id'), 'analysis_jobs', ['investigation_id'], unique=False)
     op.create_index(op.f('ix_analysis_jobs_ioc_type'), 'analysis_jobs', ['ioc_type'], unique=False)
     op.create_index(op.f('ix_analysis_jobs_owner_user_id'), 'analysis_jobs', ['owner_user_id'], unique=False)
     op.create_index(op.f('ix_analysis_jobs_priority'), 'analysis_jobs', ['priority'], unique=False)
@@ -194,8 +150,6 @@ def upgrade() -> None:
     op.create_table('search_history',
     sa.Column('id', sa.String(length=64), nullable=False),
     sa.Column('user_id', sa.String(length=64), nullable=False),
-    sa.Column('case_id', sa.String(length=64), nullable=True),
-    sa.Column('investigation_id', sa.String(length=64), nullable=True),
     sa.Column('analysis_job_id', sa.String(length=64), nullable=True),
     sa.Column('ioc_type', sa.String(length=32), nullable=False),
     sa.Column('ioc_value', sa.String(length=1024), nullable=False),
@@ -203,14 +157,10 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['analysis_job_id'], ['analysis_jobs.id'], ),
-    sa.ForeignKeyConstraint(['case_id'], ['cases.id'], ),
-    sa.ForeignKeyConstraint(['investigation_id'], ['investigations.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_search_history_analysis_job_id'), 'search_history', ['analysis_job_id'], unique=False)
-    op.create_index(op.f('ix_search_history_case_id'), 'search_history', ['case_id'], unique=False)
-    op.create_index(op.f('ix_search_history_investigation_id'), 'search_history', ['investigation_id'], unique=False)
     op.create_index(op.f('ix_search_history_ioc_type'), 'search_history', ['ioc_type'], unique=False)
     op.create_index(op.f('ix_search_history_tenant_id'), 'search_history', ['tenant_id'], unique=False)
     op.create_index(op.f('ix_search_history_user_id'), 'search_history', ['user_id'], unique=False)
@@ -222,8 +172,6 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_search_history_user_id'), table_name='search_history')
     op.drop_index(op.f('ix_search_history_tenant_id'), table_name='search_history')
     op.drop_index(op.f('ix_search_history_ioc_type'), table_name='search_history')
-    op.drop_index(op.f('ix_search_history_investigation_id'), table_name='search_history')
-    op.drop_index(op.f('ix_search_history_case_id'), table_name='search_history')
     op.drop_index(op.f('ix_search_history_analysis_job_id'), table_name='search_history')
     op.drop_table('search_history')
     op.drop_index(op.f('ix_analysis_results_verdict'), table_name='analysis_results')
@@ -240,29 +188,17 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_analysis_jobs_priority'), table_name='analysis_jobs')
     op.drop_index(op.f('ix_analysis_jobs_owner_user_id'), table_name='analysis_jobs')
     op.drop_index(op.f('ix_analysis_jobs_ioc_type'), table_name='analysis_jobs')
-    op.drop_index(op.f('ix_analysis_jobs_investigation_id'), table_name='analysis_jobs')
-    op.drop_index(op.f('ix_analysis_jobs_case_id'), table_name='analysis_jobs')
     op.drop_table('analysis_jobs')
     op.drop_index(op.f('ix_team_memberships_user_id'), table_name='team_memberships')
     op.drop_index(op.f('ix_team_memberships_tenant_id'), table_name='team_memberships')
     op.drop_index(op.f('ix_team_memberships_team_id'), table_name='team_memberships')
     op.drop_index(op.f('ix_team_memberships_role'), table_name='team_memberships')
     op.drop_table('team_memberships')
-    op.drop_index(op.f('ix_investigations_tenant_id'), table_name='investigations')
-    op.drop_index(op.f('ix_investigations_status'), table_name='investigations')
-    op.drop_index(op.f('ix_investigations_owner_user_id'), table_name='investigations')
-    op.drop_index(op.f('ix_investigations_case_id'), table_name='investigations')
-    op.drop_table('investigations')
     op.drop_index(op.f('ix_teams_tenant_id'), table_name='teams')
     op.drop_index(op.f('ix_teams_slug'), table_name='teams')
     op.drop_index(op.f('ix_teams_name'), table_name='teams')
     op.drop_index(op.f('ix_teams_created_by_user_id'), table_name='teams')
     op.drop_table('teams')
-    op.drop_index(op.f('ix_cases_visibility'), table_name='cases')
-    op.drop_index(op.f('ix_cases_tenant_id'), table_name='cases')
-    op.drop_index(op.f('ix_cases_team_id'), table_name='cases')
-    op.drop_index(op.f('ix_cases_owner_user_id'), table_name='cases')
-    op.drop_table('cases')
     op.drop_index(op.f('ix_audit_logs_tenant_id'), table_name='audit_logs')
     op.drop_index(op.f('ix_audit_logs_resource_type'), table_name='audit_logs')
     op.drop_index(op.f('ix_audit_logs_resource_id'), table_name='audit_logs')

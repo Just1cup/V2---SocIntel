@@ -2,8 +2,6 @@ from pydantic import BaseModel
 
 
 class AnalysisJobCreate(BaseModel):
-    case_id: str | None = None
-    investigation_id: str | None = None
     ioc_type: str
     ioc_value: str
 
@@ -11,8 +9,6 @@ class AnalysisJobCreate(BaseModel):
 class AnalysisJobResponse(BaseModel):
     id: str
     tenant_id: str
-    case_id: str | None
-    investigation_id: str | None
     ioc_type: str
     ioc_value: str
     status: str
@@ -38,8 +34,6 @@ class AnalysisResultSummary(BaseModel):
 class AnalysisJobDetail(BaseModel):
     id: str
     tenant_id: str
-    case_id: str | None
-    investigation_id: str | None
     owner_user_id: str
     requested_by_user_id: str
     ioc_type: str

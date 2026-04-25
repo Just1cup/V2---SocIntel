@@ -3,12 +3,11 @@ from app.models import (
     AnalysisJob,
     AnalysisResult,
     AuditLog,
-    Case,
-    Investigation,
     SearchHistory,
     Team,
     TeamMembership,
     Tenant,
+    TokenRevocation,
     User,
 )
 

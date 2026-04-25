@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps import DbSession, require_admin
 from app.models.user import User
 from app.schemas.user import UserCreate, UserListItem, UserRegister, UserRoleUpdate
+from app.services.audit_service import AuditService
 from app.services.user_service import UserService
 
 router = APIRouter()
@@ -53,6 +54,14 @@ def create_user(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    AuditService(db).record(
+        action="user_created",
+        resource_type="user",
+        resource_id=user.id,
+        actor=current_user,
+        details={"role": user.role},
+    )
+    db.commit()
     return UserListItem(
         id=user.id,
         tenant_id=user.tenant_id,
@@ -85,6 +94,14 @@ def register_user(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    AuditService(db).record(
+        action="user_registered",
+        resource_type="user",
+        resource_id=user.id,
+        tenant_id=user.tenant_id,
+        details={"email": user.email},
+    )
+    db.commit()
     return UserListItem(
         id=user.id,
         tenant_id=user.tenant_id,
@@ -106,7 +123,16 @@ def update_user_role(
     user = service.get_for_tenant(current_user.tenant_id, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    old_role = user.role
     updated = service.update_role(user, payload.role)
+    AuditService(db).record(
+        action="user_role_updated",
+        resource_type="user",
+        resource_id=updated.id,
+        actor=current_user,
+        details={"old_role": old_role, "new_role": updated.role},
+    )
+    db.commit()
     return UserListItem(
         id=updated.id,
         tenant_id=updated.tenant_id,
