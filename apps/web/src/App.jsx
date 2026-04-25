@@ -721,12 +721,11 @@ export function App() {
       <section className="workspace-main">
         <header className="hero-bar">
           <div>
-            <p className="eyebrow">Platform / Home</p>
+            <p className="eyebrow">SOC Analyst Console</p>
             <h1>{activeTab === "analysis" ? "Analise" : activeTab === "mitre" ? "MITRE ATT&CK" : activeTab === "threat" ? "Threat Intell" : "Usuarios"}</h1>
           </div>
           <div className="hero-actions">
-            <input className="top-command-search" type="search" placeholder="Go to page, settings, docs..." aria-label="Global command search" />
-            <span className="hero-meta">EN</span>
+            <span className="hero-meta">IOC Enrichment</span>
             {activeJob?.status ? <span className={`status-pill status-${activeJob.status}`}>{activeJob.status}</span> : null}
           </div>
         </header>

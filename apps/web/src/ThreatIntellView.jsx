@@ -23,41 +23,6 @@ function summarizeObject(stixObject) {
   };
 }
 
-function severityFor(stixObject) {
-  if (stixObject.revoked) return "low";
-  if (stixObject.confidence >= 80) return "high";
-  if (stixObject.confidence >= 40) return "medium";
-  if (stixObject.type === "malware" || stixObject.type === "intrusion-set" || stixObject.type === "campaign") return "high";
-  return "low";
-}
-
-function ageFor(value) {
-  if (!value) return "unknown age";
-  const timestamp = new Date(value).getTime();
-  if (Number.isNaN(timestamp)) return "unknown age";
-  const days = Math.max(0, Math.round((Date.now() - timestamp) / 86400000));
-  if (days === 0) return "today";
-  if (days === 1) return "1 day ago";
-  return `${days} days ago`;
-}
-
-function tagsFor(stixObject) {
-  return [
-    externalIdFor(stixObject),
-    ...(stixObject.x_mitre_platforms || []).slice(0, 2),
-    ...(stixObject.x_mitre_domains || []).slice(0, 1),
-  ].filter(Boolean);
-}
-
-function matchesObjectSearch(stixObject, query) {
-  const normalized = String(query || "").trim().toLowerCase();
-  if (!normalized) return true;
-  const summary = summarizeObject(stixObject);
-  return [summary.name, summary.type, summary.externalId, summary.id, summary.description]
-    .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(normalized));
-}
-
 function compactJson(value) {
   return JSON.stringify(value, null, 2);
 }
@@ -238,7 +203,6 @@ export function ThreatIntellView({ token }) {
   const [objectsPayload, setObjectsPayload] = useState(null);
   const [manifestPayload, setManifestPayload] = useState(null);
   const [activeObject, setActiveObject] = useState(null);
-  const [globalQuery, setGlobalQuery] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -293,16 +257,6 @@ export function ThreatIntellView({ token }) {
 
   const objects = useMemo(() => objectsPayload?.data?.objects || [], [objectsPayload]);
   const manifestObjects = useMemo(() => manifestPayload?.data?.objects || [], [manifestPayload]);
-  const visibleObjects = useMemo(() => objects.filter((item) => matchesObjectSearch(item, globalQuery)), [objects, globalQuery]);
-  const feedSnapshot = useMemo(() => {
-    const counts = objects.reduce((acc, item) => {
-      acc[item.type] = (acc[item.type] || 0) + 1;
-      return acc;
-    }, {});
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6);
-  }, [objects]);
 
   async function loadManifest(event) {
     event.preventDefault();
@@ -341,88 +295,43 @@ export function ThreatIntellView({ token }) {
     }
   }
 
-  function executeGlobalSearch(event) {
-    event.preventDefault();
-    const query = globalQuery.trim();
-    if (!query) {
-      loadObjects(event);
-      return;
-    }
-    if (OBJECT_TYPES.includes(query)) {
-      setFilters((current) => ({ ...current, type: query, id: "" }));
-      return;
-    }
-    if (query.includes("--")) {
-      setFilters((current) => ({ ...current, id: query, type: "" }));
-    }
-  }
-
   return (
     <section className="threat-layout">
-      <section className="threat-search-zone">
-        <form className="threat-global-search" onSubmit={executeGlobalSearch}>
-          <p className="eyebrow">Threat Intelligence / Global Search</p>
-          <div className="threat-search-box">
-            <span className="threat-prompt">&gt;_</span>
-            <input
-              type="search"
-              value={globalQuery}
-              onChange={(event) => setGlobalQuery(event.target.value)}
-              placeholder="Enter a STIX ID, type, ATT&CK ID, malware, tool, or campaign"
-              aria-label="Threat intelligence global search"
-            />
-            <button className="primary-button" type="submit" disabled={loading}>
-              Execute
-            </button>
-          </div>
-          <div className="threat-search-tips">
-            <span>Tip: use <strong>attack-pattern</strong> for techniques</span>
-            <span>Tip: paste a STIX ID for exact lookup</span>
-          </div>
-        </form>
-      </section>
-
-      <section className="threat-feed-section">
-        <div className="threat-feed-head">
+      <div className="panel threat-panel">
+        <div className="panel-head">
           <div>
-            <h2>Recent Intelligence</h2>
-            <p className="muted-line">Live TAXII feed indexed from configured CTI sources</p>
+            <p className="eyebrow">TAXII 2.1 • Threat Intelligence Feeds</p>
+            <h2>Threat Intell</h2>
           </div>
-          <span className="threat-archive-link">View feed archive -&gt;</span>
+          <div className="mitre-meta-strip">
+            <span className="mitre-chip">Fonte: MITRE ATT&CK</span>
+            <span className="mitre-chip">Formato: STIX 2.1</span>
+          </div>
         </div>
 
-        {visibleObjects.length ? (
-          <div className="threat-feed-grid">
-            {visibleObjects.slice(0, 8).map((item) => {
-              const summary = summarizeObject(item);
-              const severity = severityFor(item);
-              return (
-                <button key={`${summary.id}-${summary.modified}`} type="button" className={`threat-feed-card threat-feed-card-${severity}`} onClick={() => setActiveObject(item)}>
-                  <span className="threat-feed-icon">{summary.type.slice(0, 2).toUpperCase()}</span>
-                  <span className="threat-feed-content">
-                    <span className="threat-feed-topline">
-                      <strong>{summary.name}</strong>
-                      <span className={`threat-severity threat-severity-${severity}`}>{severity}</span>
-                    </span>
-                    <span className="threat-feed-source">MITRE ATT&CK • {ageFor(summary.modified)}</span>
-                    <span className="threat-feed-desc">{summary.description || "No narrative summary provided by the TAXII object."}</span>
-                    <span className="threat-feed-tags">
-                      {tagsFor(item).map((tag) => (
-                        <span key={tag}>{tag}</span>
-                      ))}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="empty-state threat-empty-feed">
-            <h3>No feed objects loaded</h3>
-            <p className="muted-line">Run a TAXII query below to populate recent intelligence.</p>
-          </div>
-        )}
-      </section>
+        <div className="mitre-status" aria-live="polite">
+          {status}
+        </div>
+
+        <div className="threat-summary-grid">
+          <article className="mitre-summary-card">
+            <p className="mitre-summary-label">Fontes</p>
+            <p className="mitre-summary-value">{sources.length}</p>
+          </article>
+          <article className="mitre-summary-card">
+            <p className="mitre-summary-label">Coleções</p>
+            <p className="mitre-summary-value">{collections.length}</p>
+          </article>
+          <article className="mitre-summary-card">
+            <p className="mitre-summary-label">Manifesto</p>
+            <p className="mitre-summary-value">{manifestObjects.length}</p>
+          </article>
+          <article className="mitre-summary-card">
+            <p className="mitre-summary-label">Objetos</p>
+            <p className="mitre-summary-value">{objects.length}</p>
+          </article>
+        </div>
+      </div>
 
       <div className="threat-grid">
         <aside className="panel threat-panel">
@@ -500,41 +409,51 @@ export function ThreatIntellView({ token }) {
         <section className="panel threat-panel">
           <div className="panel-head">
             <div>
-              <h2>Feed Distribution Snapshot</h2>
-              <p className="muted-line">Current result set by STIX object type.</p>
+              <h2>Objetos STIX</h2>
+              <p className="muted-line">Resultados retornados diretamente do feed TAXII configurado.</p>
             </div>
           </div>
 
-          {feedSnapshot.length ? (
-            <div className="threat-distribution">
-              {feedSnapshot.map(([type, count]) => (
-                <div className="threat-distribution-row" key={type}>
-                  <span>{type}</span>
-                  <strong>{count}</strong>
-                  <span style={{ width: `${Math.max(8, (count / Math.max(objects.length, 1)) * 100)}%` }} />
-                </div>
-              ))}
+          {objects.length ? (
+            <div className="threat-object-list">
+              {objects.map((item) => {
+                const summary = summarizeObject(item);
+                return (
+                  <button
+                    key={`${summary.id}-${summary.modified}`}
+                    type="button"
+                    className={`threat-object-card ${activeObject?.id === item.id ? "threat-object-card-active" : ""}`}
+                    onClick={() => setActiveObject(item)}
+                  >
+                    <span className="history-card-top">
+                      <strong>{summary.name}</strong>
+                      <span className="mitre-id-badge">{summary.type}</span>
+                    </span>
+                    <span className="muted-line">{summary.externalId || summary.id}</span>
+                    {summary.description ? <p>{summary.description}</p> : null}
+                    {summary.modified ? <small>{summary.modified}</small> : null}
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <div className="empty-state">
-              <h3>No distribution data</h3>
-              <p className="muted-line">Execute a STIX query to build a feed snapshot.</p>
+              <h3>Nenhum objeto carregado</h3>
+              <p className="muted-line">Selecione uma coleção e execute uma consulta filtrada.</p>
             </div>
           )}
         </section>
       </div>
 
-      {manifestPayload || objectsPayload ? (
-        <div className="panel threat-panel">
-          <div className="panel-head">
-            <div>
-              <h2>Feed Summary</h2>
-              <p className="muted-line">Raw TAXII response preview for analysts and integrations.</p>
-            </div>
+      <div className="panel threat-panel">
+        <div className="panel-head">
+          <div>
+            <h2>{activeObject ? "Objeto selecionado" : "Manifesto / Detalhe"}</h2>
+            <p className="muted-line">Visualização JSON para inspeção técnica e integração futura.</p>
           </div>
-          <pre className="threat-json-view">{compactJson(manifestPayload?.data || objectsPayload?.data || {})}</pre>
         </div>
-      ) : null}
+        <pre className="threat-json-view">{compactJson(activeObject || manifestPayload?.data || objectsPayload?.data || {})}</pre>
+      </div>
 
       <ThreatObjectModal stixObject={activeObject} onClose={() => setActiveObject(null)} />
     </section>
