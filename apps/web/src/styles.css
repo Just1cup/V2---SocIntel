@@ -1131,6 +1131,87 @@ select {
   color: var(--text);
 }
 
+.threat-layout {
+  display: grid;
+  gap: 20px;
+  padding: 20px 28px 28px;
+}
+
+.threat-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.threat-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.threat-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.threat-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 10px;
+}
+
+.threat-object-list {
+  display: grid;
+  gap: 12px;
+  max-height: 720px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.threat-object-card {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  text-align: left;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: var(--panel-2);
+  cursor: pointer;
+}
+
+.threat-object-card-active {
+  border-color: rgba(124, 58, 237, 0.72);
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.22);
+}
+
+.threat-object-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.threat-json-view {
+  margin: 0;
+  max-height: 560px;
+  overflow: auto;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.26);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .primary-button:hover,
 .ghost-button:hover,
 .theme-toggle:hover,
@@ -1138,7 +1219,8 @@ select {
 .type-pill:hover,
 .history-card:hover,
 .link-item:hover,
-.osint-link-card:hover {
+.osint-link-card:hover,
+.threat-object-card:hover {
   transform: translateY(-1px);
 }
 
@@ -1159,6 +1241,8 @@ select {
   .context-lists,
   .link-list-compact,
   .mitre-summary-grid,
+  .threat-summary-grid,
+  .threat-grid,
   .risk-grid,
   .osint-grid {
     grid-template-columns: 1fr;
@@ -1184,8 +1268,13 @@ select {
     padding: 16px;
   }
 
-  .mitre-layout {
+  .mitre-layout,
+  .threat-layout {
     padding: 16px;
+  }
+
+  .threat-actions {
+    grid-template-columns: 1fr;
   }
 
   .osint-modal {

@@ -97,4 +97,29 @@ export const api = {
     request(`/mitre/techniques/${encodeURIComponent(externalId)}`, {
       token,
     }),
+  listTaxiiSources: (token) => request("/threat-feeds/taxii/sources", { token }),
+  getTaxiiCollections: (token, sourceId) =>
+    request(`/threat-feeds/taxii/sources/${encodeURIComponent(sourceId)}/collections`, { token }),
+  getTaxiiManifest: (token, sourceId, collectionId, params = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) query.set(key, value);
+    });
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return request(
+      `/threat-feeds/taxii/sources/${encodeURIComponent(sourceId)}/collections/${encodeURIComponent(collectionId)}/manifest${suffix}`,
+      { token },
+    );
+  },
+  getTaxiiObjects: (token, sourceId, collectionId, params = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) query.set(key, value);
+    });
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return request(
+      `/threat-feeds/taxii/sources/${encodeURIComponent(sourceId)}/collections/${encodeURIComponent(collectionId)}/objects${suffix}`,
+      { token },
+    );
+  },
 };

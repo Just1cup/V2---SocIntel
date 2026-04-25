@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState } from "react";
 import { api } from "./api";
 
 const MitreView = lazy(() => import("./MitreView").then((module) => ({ default: module.MitreView })));
+const ThreatIntellView = lazy(() => import("./ThreatIntellView").then((module) => ({ default: module.ThreatIntellView })));
 
 const IOC_TYPES = [
   { value: "ip", label: "IP" },
@@ -698,6 +699,9 @@ export function App() {
             <button type="button" className={`tab-button side-tab ${activeTab === "mitre" ? "tab-button-active" : ""}`} onClick={() => setActiveTab("mitre")}>
               MITRE ATT&CK
             </button>
+            <button type="button" className={`tab-button side-tab ${activeTab === "threat" ? "tab-button-active" : ""}`} onClick={() => setActiveTab("threat")}>
+              Threat Intell
+            </button>
             {session.user?.role === "admin" ? (
               <button type="button" className={`tab-button side-tab ${activeTab === "users" ? "tab-button-active" : ""}`} onClick={() => setActiveTab("users")}>
                 Usuarios
@@ -718,7 +722,7 @@ export function App() {
         <header className="hero-bar">
           <div>
             <p className="eyebrow">SOC Analyst Console</p>
-            <h1>{activeTab === "analysis" ? "Analise" : activeTab === "mitre" ? "MITRE ATT&CK" : "Usuarios"}</h1>
+            <h1>{activeTab === "analysis" ? "Analise" : activeTab === "mitre" ? "MITRE ATT&CK" : activeTab === "threat" ? "Threat Intell" : "Usuarios"}</h1>
           </div>
           <div className="hero-actions">
             <span className="hero-meta">IOC Enrichment</span>
@@ -889,6 +893,10 @@ export function App() {
         ) : activeTab === "mitre" ? (
           <Suspense fallback={<section className="analysis-layout"><div className="panel"><div className="empty-state"><h3>Carregando MITRE ATT&CK</h3></div></div></section>}>
             <MitreView token={session.token} />
+          </Suspense>
+        ) : activeTab === "threat" ? (
+          <Suspense fallback={<section className="threat-layout"><div className="panel"><div className="empty-state"><h3>Carregando Threat Intell</h3></div></div></section>}>
+            <ThreatIntellView token={session.token} />
           </Suspense>
         ) : (
           <section className="management-layout">
