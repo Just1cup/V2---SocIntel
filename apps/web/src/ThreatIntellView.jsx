@@ -27,6 +27,172 @@ function compactJson(value) {
   return JSON.stringify(value, null, 2);
 }
 
+function listValue(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).join(", ");
+  return value || "—";
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+}
+
+function objectUrl(stixObject) {
+  const ref = stixObject?.external_references?.find((item) => item.url);
+  return ref?.url || "";
+}
+
+function DataPoint({ label, value }) {
+  return (
+    <div className="threat-detail-row">
+      <span>{label}</span>
+      <strong>{value || "—"}</strong>
+    </div>
+  );
+}
+
+function ChipList({ items }) {
+  const values = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (!values.length) return <p className="muted-line">Nenhum dado informado.</p>;
+  return (
+    <div className="threat-chip-list">
+      {values.map((item) => (
+        <span className="mitre-chip" key={item}>
+          {item}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ThreatObjectModal({ stixObject, onClose }) {
+  if (!stixObject) return null;
+  const summary = summarizeObject(stixObject);
+  const url = objectUrl(stixObject);
+  const killChain = stixObject.kill_chain_phases || [];
+  const references = stixObject.external_references || [];
+  const aliases = stixObject.aliases || stixObject.x_mitre_aliases || [];
+  const relatedRefs = [
+    ...(stixObject.object_marking_refs || []),
+    ...(stixObject.created_by_ref ? [stixObject.created_by_ref] : []),
+    ...(stixObject.source_ref ? [stixObject.source_ref] : []),
+    ...(stixObject.target_ref ? [stixObject.target_ref] : []),
+  ];
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <article className="threat-detail-modal" role="dialog" aria-modal="true" aria-labelledby="threat-detail-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="threat-detail-hero">
+          <div>
+            <p className="eyebrow">{summary.type} • STIX 2.1</p>
+            <h2 id="threat-detail-title">{summary.name}</h2>
+            <p className="muted-line threat-detail-id">{summary.externalId || summary.id}</p>
+          </div>
+          <div className="threat-detail-actions">
+            {url ? (
+              <a className="ghost-button" href={url} target="_blank" rel="noreferrer">
+                Abrir fonte
+              </a>
+            ) : null}
+            <button type="button" className="ghost-button" onClick={onClose}>
+              Fechar
+            </button>
+          </div>
+        </header>
+
+        <section className="threat-detail-grid">
+          <DataPoint label="Tipo" value={summary.type} />
+          <DataPoint label="Confiança" value={stixObject.confidence ? `${stixObject.confidence}/100` : "—"} />
+          <DataPoint label="Criado" value={formatDate(stixObject.created)} />
+          <DataPoint label="Modificado" value={formatDate(stixObject.modified)} />
+          <DataPoint label="Versão MITRE" value={stixObject.x_mitre_version} />
+          <DataPoint label="Revogado" value={stixObject.revoked ? "Sim" : "Não"} />
+        </section>
+
+        <div className="threat-detail-content">
+          <section className="threat-detail-card threat-detail-card-wide">
+            <h3>Descrição</h3>
+            <p>{stixObject.description || "Sem descrição disponível."}</p>
+          </section>
+
+          {stixObject.x_mitre_detection ? (
+            <section className="threat-detail-card threat-detail-card-wide">
+              <h3>Detecção</h3>
+              <p>{stixObject.x_mitre_detection}</p>
+            </section>
+          ) : null}
+
+          {stixObject.pattern ? (
+            <section className="threat-detail-card threat-detail-card-wide">
+              <h3>Padrão indicador</h3>
+              <pre className="threat-inline-code">{stixObject.pattern}</pre>
+            </section>
+          ) : null}
+
+          <section className="threat-detail-card">
+            <h3>Kill chain</h3>
+            {killChain.length ? (
+              <div className="threat-killchain">
+                {killChain.map((phase) => (
+                  <span className="mitre-chip" key={`${phase.kill_chain_name}-${phase.phase_name}`}>
+                    {phase.kill_chain_name}: {phase.phase_name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="muted-line">Sem fase associada.</p>
+            )}
+          </section>
+
+          <section className="threat-detail-card">
+            <h3>Plataformas</h3>
+            <ChipList items={stixObject.x_mitre_platforms} />
+          </section>
+
+          <section className="threat-detail-card">
+            <h3>Data sources</h3>
+            <ChipList items={stixObject.x_mitre_data_sources} />
+          </section>
+
+          <section className="threat-detail-card">
+            <h3>Aliases / Domínios</h3>
+            <ChipList items={[...aliases, ...(stixObject.x_mitre_domains || [])]} />
+          </section>
+
+          <section className="threat-detail-card threat-detail-card-wide">
+            <h3>Referências externas</h3>
+            {references.length ? (
+              <div className="threat-reference-list">
+                {references.map((reference, index) => (
+                  <a href={reference.url || "#"} target="_blank" rel="noreferrer" className="threat-reference-card" key={`${reference.source_name}-${index}`}>
+                    <strong>{reference.external_id || reference.source_name || "Referência"}</strong>
+                    <span>{reference.source_name || "Fonte externa"}</span>
+                    {reference.description ? <p>{reference.description}</p> : null}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="muted-line">Nenhuma referência externa.</p>
+            )}
+          </section>
+
+          <section className="threat-detail-card threat-detail-card-wide">
+            <h3>Relacionamentos e marcações</h3>
+            <ChipList items={relatedRefs} />
+          </section>
+
+          <details className="threat-detail-card threat-detail-card-wide">
+            <summary>STIX JSON bruto</summary>
+            <pre className="threat-json-view threat-json-view-modal">{compactJson(stixObject)}</pre>
+          </details>
+        </div>
+      </article>
+    </div>
+  );
+}
+
 export function ThreatIntellView({ token }) {
   const [sources, setSources] = useState([]);
   const [collections, setCollections] = useState([]);
@@ -288,7 +454,8 @@ export function ThreatIntellView({ token }) {
         </div>
         <pre className="threat-json-view">{compactJson(activeObject || manifestPayload?.data || objectsPayload?.data || {})}</pre>
       </div>
+
+      <ThreatObjectModal stixObject={activeObject} onClose={() => setActiveObject(null)} />
     </section>
   );
 }
-
