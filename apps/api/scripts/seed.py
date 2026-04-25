@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import secrets
 from uuid import uuid4
 
 from app.core.security import generate_password_salt, hash_password_with_salt
@@ -20,10 +19,8 @@ ADMIN_PASSWORD_ENV = "SOCINTEL_BOOTSTRAP_ADMIN_PASSWORD"
 
 def seed() -> None:
     admin_password = os.getenv(ADMIN_PASSWORD_ENV)
-    generated_password = None
     if not admin_password:
-        generated_password = secrets.token_urlsafe(24)
-        admin_password = generated_password
+        raise RuntimeError(f"{ADMIN_PASSWORD_ENV} must be set before creating the bootstrap admin.")
 
     db = SessionLocal()
     try:
@@ -51,8 +48,6 @@ def seed() -> None:
                 status="active",
             )
             db.add(user)
-            if generated_password:
-                print(f"Created bootstrap admin {ADMIN_EMAIL} with password: {generated_password}")
         else:
             user.tenant_id = TENANT_ID
             user.email = ADMIN_EMAIL

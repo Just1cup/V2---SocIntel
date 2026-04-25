@@ -84,7 +84,7 @@ PYTHONPATH=. celery -A app.workers.celery_app:celery_app worker --loglevel=info
 Bootstrap admin credentials:
 
 - email: `admin@socintel.dev`
-- password: set `SOCINTEL_BOOTSTRAP_ADMIN_PASSWORD`, or read the generated password printed the first time `scripts/seed.py` creates the admin user
+- password: set `SOCINTEL_BOOTSTRAP_ADMIN_PASSWORD` in your local `.env` before running `scripts/seed.py`
 
 Legacy adapter path:
 
