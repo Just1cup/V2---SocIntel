@@ -33,7 +33,7 @@ services:
         -c autovacuum_naptime=30s
 
     ports:
-      - "127.0.0.1:5432:5432"
+      - "${DOCKER_BIND_HOST:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:${POSTGRES_CONTAINER_PORT:-5432}"
 
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -75,7 +75,7 @@ services:
         --lazyfree-lazy-expire yes
 
     ports:
-      - "127.0.0.1:6379:6379"
+      - "${DOCKER_BIND_HOST:-127.0.0.1}:${REDIS_HOST_PORT:-6379}:${REDIS_CONTAINER_PORT:-6379}"
 
     deploy:
       resources:
