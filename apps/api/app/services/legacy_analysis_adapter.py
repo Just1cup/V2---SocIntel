@@ -15,7 +15,7 @@ def _resolve_legacy_repo_path() -> Path:
     return Path(__file__).resolve().parents[5] / "socintel"
 
 
-def _load_legacy_analyze():
+def _load_legacy_modules():
     legacy_repo = _resolve_legacy_repo_path()
     if not legacy_repo.exists():
         raise FileNotFoundError(f"Legacy SOCINTEL repository not found at {legacy_repo}")
@@ -23,8 +23,19 @@ def _load_legacy_analyze():
     if legacy_repo_str not in sys.path:
         sys.path.insert(0, legacy_repo_str)
     from backend.orchestrator import analyze  # type: ignore
+    from backend.config import Config  # type: ignore
 
-    return analyze
+    return analyze, Config
+
+
+def _build_legacy_config(legacy_config_cls):
+    return legacy_config_cls(
+        vt_api_key=settings.vt_api_key,
+        abuse_api_key=settings.abuse_api_key,
+        otx_api_key=settings.otx_api_key,
+        urlscan_api_key=settings.urlscan_api_key,
+        shodan_api_key=settings.shodan_api_key,
+    )
 
 
 def _jsonable(value: Any) -> Any:
@@ -44,9 +55,13 @@ def _resolve_ioc_type(ioc_type: str, ioc_value: str) -> str:
 
 
 def run_legacy_analysis(ioc_type: str, ioc_value: str) -> dict[str, Any]:
-    analyze = _load_legacy_analyze()
+    analyze, legacy_config_cls = _load_legacy_modules()
     resolved_ioc_type = _resolve_ioc_type(ioc_type, ioc_value)
-    result = analyze(resolved_ioc_type, ioc_value)
+    result = analyze(
+        resolved_ioc_type,
+        ioc_value,
+        config=_build_legacy_config(legacy_config_cls),
+    )
     payload = {
         "risk": result.risk,
         "level": str(result.level).lower(),

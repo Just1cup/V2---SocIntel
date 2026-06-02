@@ -141,8 +141,20 @@ The launcher starts Vite bound to `127.0.0.1` by default. To expose it intention
 SOCINTEL_WEB_HOST=0.0.0.0 ./scripts/run_app.sh
 ```
 
-To stop API, worker, and web:
+To stop API, worker, web, PostgreSQL, and Redis:
 
 ```bash
 ./scripts/stop_app.sh
+```
+
+To stop only API, worker, and web while keeping Docker services running:
+
+```bash
+./scripts/stop_app.sh --keep-docker
+```
+
+To also delete local Docker volumes, including database data:
+
+```bash
+./scripts/stop_app.sh --volumes
 ```

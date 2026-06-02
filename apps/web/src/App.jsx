@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from "react";
+import { sleep } from "./asyncControl";
 import { api } from "./api";
 
 const MitreView = lazy(() => import("./MitreView").then((module) => ({ default: module.MitreView })));
@@ -23,12 +24,12 @@ const PROVIDER_INFO = {
   WHOIS: "Consulta de registro de dominio para ownership, datas relevantes, nameservers e informacoes de registrador.",
   DNS: "Resolucao e contexto tecnico de dominios, incluindo registros, nameservers e apontamentos observados.",
   OTX: "Fonte de intelligence comunitaria da AlienVault com indicadores e campanhas correlacionadas.",
+  URLhaus: "Feed da abuse.ch focado em URLs, hosts e payloads usados para distribuicao de malware.",
+  MalwareBazaar: "Repositorio comunitario da abuse.ch para correlacao de hashes, familias, tags e amostras de malware.",
 };
-const NAME_REGEX = /^[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9 .,'_-]{2,254}$/;
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,128}$/;
 const SESSION_KEY = "socintel_v2_session";
 const THEME_KEY = "socintel_v2_theme";
-const TOKEN_KEY = "socintel_v2_access_token";
 const HIDDEN_JOBS_KEY = "socintel_v2_hidden_jobs";
 
 function readJsonStorage(storage, key, fallback) {
@@ -58,18 +59,6 @@ function clearSession() {
   localStorage.removeItem(SESSION_KEY);
 }
 
-function readAuthToken() {
-  return sessionStorage.getItem(TOKEN_KEY) || "";
-}
-
-function writeAuthToken(token) {
-  if (token) {
-    sessionStorage.setItem(TOKEN_KEY, token);
-  } else {
-    sessionStorage.removeItem(TOKEN_KEY);
-  }
-}
-
 function readTheme() {
   return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
 }
@@ -95,27 +84,34 @@ function sanitizeText(value) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function validateAuthForm({ email, password, full_name }) {
+function validateAuthForm({ email, password }) {
   if (!sanitizeEmail(email)) return "Email is required.";
-  if (full_name !== undefined && !NAME_REGEX.test(sanitizeText(full_name))) {
-    return "Nome completo invalido. Use ao menos 3 caracteres validos.";
-  }
   if (!PASSWORD_REGEX.test(password)) {
     return "Senha invalida. Use 8+ caracteres com maiuscula, minuscula e numero.";
   }
   return "";
 }
 
-function wait(ms) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
+function validatePasswordChangeForm({ current_password, new_password, confirm_password }) {
+  if (!PASSWORD_REGEX.test(current_password)) {
+    return "Senha atual invalida. Use 8+ caracteres com maiuscula, minuscula e numero.";
+  }
+  if (!PASSWORD_REGEX.test(new_password)) {
+    return "Nova senha invalida. Use 8+ caracteres com maiuscula, minuscula e numero.";
+  }
+  if (new_password !== confirm_password) return "A confirmacao da nova senha nao confere.";
+  if (current_password === new_password) return "A nova senha precisa ser diferente da senha atual.";
+  return "";
+}
+
+function isAbortError(error) {
+  return error?.name === "AbortError";
 }
 
 function mapLevel(level) {
   const normalized = String(level || "").toLowerCase();
-  if (normalized.includes("alto")) return "risk-high";
-  if (normalized.includes("medio") || normalized.includes("médio")) return "risk-medium";
+  if (normalized.includes("critical") || normalized.includes("alto") || normalized.includes("high")) return "risk-high";
+  if (normalized.includes("medium") || normalized.includes("medio") || normalized.includes("médio")) return "risk-medium";
   return "risk-low";
 }
 
@@ -138,6 +134,7 @@ function buildOsintLinks(job) {
       { label: "AlienVault OTX", href: `https://otx.alienvault.com/indicator/ip/${value}` },
       { label: "AbuseIPDB", href: `https://www.abuseipdb.com/check/${value}` },
       { label: "Shodan", href: `https://www.shodan.io/host/${value}` },
+      { label: "URLhaus", href: `https://urlhaus.abuse.ch/browse.php?search=${value}` },
     ];
   }
   if (job.ioc_type === "domain_email") {
@@ -148,6 +145,7 @@ function buildOsintLinks(job) {
       { label: "AlienVault OTX", href: `https://otx.alienvault.com/browse/global/pulses?q=${value}` },
       ...(isEmail ? [{ label: "Hunter", href: `https://hunter.io/search/${value}` }] : []),
       { label: "WHOIS", href: `https://who.is/whois/${domainValue}` },
+      { label: "URLhaus", href: `https://urlhaus.abuse.ch/browse.php?search=${domainValue}` },
     ];
   }
   if (job.ioc_type === "domain" || job.ioc_type === "url") {
@@ -156,6 +154,7 @@ function buildOsintLinks(job) {
       { label: "AlienVault OTX", href: `https://otx.alienvault.com/browse/global/pulses?q=${value}` },
       { label: "urlscan.io", href: `https://urlscan.io/search/#domain:${value}` },
       { label: "WHOIS", href: `https://who.is/whois/${value}` },
+      { label: "URLhaus", href: `https://urlhaus.abuse.ch/browse.php?search=${value}` },
     ];
   }
   if (job.ioc_type === "email") {
@@ -168,6 +167,8 @@ function buildOsintLinks(job) {
     return [
       { label: "VirusTotal", href: `https://www.virustotal.com/gui/file/${value}` },
       { label: "AlienVault OTX", href: `https://otx.alienvault.com/browse/global/pulses?q=${value}` },
+      { label: "URLhaus", href: `https://urlhaus.abuse.ch/browse.php?search=${value}` },
+      { label: "MalwareBazaar", href: `https://bazaar.abuse.ch/browse.php?search=${value}` },
     ];
   }
   if (job.ioc_type === "mac") {
@@ -217,6 +218,38 @@ function formatProviderDetails(details) {
             : String(value);
       return { label, value: formattedValue };
     });
+}
+
+function providerIntegrationStatus(details) {
+  const normalized = Object.fromEntries(
+    Object.entries(details || {}).map(([key, value]) => [key.toLowerCase(), String(value || "").toLowerCase()]),
+  );
+  const status = normalized.status || normalized.query_status || normalized.querystatus || "";
+  if (status === "auth_failed" || status === "unauthorized" || status === "forbidden") {
+    return {
+      tone: "warning",
+      title: "Integração indisponível",
+      message: "A consulta não foi concluída porque a credencial do provider falhou ou não está configurada.",
+      action: "Verifique a API key/token deste provider no backend antes de usar esse resultado como evidência.",
+    };
+  }
+  if (status === "error" || status === "failed") {
+    return {
+      tone: "warning",
+      title: "Provider retornou erro",
+      message: "A fonte externa respondeu com erro durante a consulta.",
+      action: "Tente novamente ou confirme disponibilidade e configuração da integração.",
+    };
+  }
+  if (status === "ok" || status === "success" || status === "found") {
+    return {
+      tone: "ok",
+      title: "Integração consultada",
+      message: "A fonte externa respondeu com dados para esta análise.",
+      action: null,
+    };
+  }
+  return null;
 }
 
 function parseFindingProvider(finding) {
@@ -278,6 +311,7 @@ function shouldHideFinding(finding) {
 
 function buildProviderViewerData(link, findings, activeResult) {
   const providerName = normalizeProviderName(link?.label);
+  const rawDetails = activeResult?.provider_details?.[providerName] || {};
   const providerFindings = findings
     .map((item) => ({ raw: item, parsed: parseFindingProvider(item) }))
     .filter((entry) => normalizeProviderName(entry.parsed.provider) === providerName);
@@ -286,7 +320,8 @@ function buildProviderViewerData(link, findings, activeResult) {
     providerName,
     description: PROVIDER_INFO[providerName] || "Fonte OSINT utilizada na consolidacao desta analise.",
     highlights: providerFindings.map((entry) => entry.parsed.detail || entry.raw).filter(Boolean),
-    details: formatProviderDetails(activeResult?.provider_details?.[providerName]),
+    details: formatProviderDetails(rawDetails),
+    integrationStatus: providerIntegrationStatus(rawDetails),
     verdict: activeResult?.legacy_verdict || activeResult?.verdict || "Sem veredito consolidado.",
     recommendations: activeResult?.recommendations || [],
   };
@@ -296,24 +331,23 @@ export function App() {
   const [theme, setTheme] = useState(() => readTheme());
   const [session, setSession] = useState(() => {
     const stored = readSession();
-    return stored ? { ...stored, token: readAuthToken() } : null;
+    return stored ? { ...stored, token: "" } : null;
   });
   const [activeTab, setActiveTab] = useState("analysis");
-  const [authView, setAuthView] = useState("login");
   const [loginForm, setLoginForm] = useState({ email: session?.user?.email || "admin@socintel.dev", password: "" });
-  const [registerForm, setRegisterForm] = useState({ full_name: "", email: "", password: "" });
   const [jobForm, setJobForm] = useState({ ioc_type: "ip", ioc_value: "8.8.8.8" });
   const [activeJob, setActiveJob] = useState(null);
   const [activeResult, setActiveResult] = useState(null);
   const [jobs, setJobs] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [userForm, setUserForm] = useState({ full_name: "", email: "", password: "", role: "minimum" });
+  const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
   const [hiddenJobIds, setHiddenJobIds] = useState(() => readHiddenJobIds());
   const [pendingDeleteJob, setPendingDeleteJob] = useState(null);
   const [activeOsintLink, setActiveOsintLink] = useState(null);
+  const [isSocGuideCollapsed, setIsSocGuideCollapsed] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-  const [registerMessage, setRegisterMessage] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
   const [jobError, setJobError] = useState("");
   const [formMessage, setFormMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -336,12 +370,14 @@ export function App() {
   useEffect(() => {
     if (!session?.user) return;
     let ignore = false;
+    const controller = new AbortController();
 
     async function loadJobs() {
       try {
-        const payload = await api.listAnalysisJobs(session.token);
+        const payload = await api.listAnalysisJobs(session.token, { signal: controller.signal });
         if (!ignore) setJobs(payload);
       } catch (error) {
+        if (isAbortError(error)) return;
         if (!ignore) setJobError(error.message);
       }
     }
@@ -349,54 +385,35 @@ export function App() {
     loadJobs();
     return () => {
       ignore = true;
+      controller.abort();
     };
-  }, [session?.token, session?.user?.id, activeJob?.status]);
-
-  useEffect(() => {
-    if (!session?.user || session.user?.role !== "admin") {
-      setUsers([]);
-      return;
-    }
-    let ignore = false;
-
-    async function loadUsers() {
-      try {
-        const payload = await api.listUsers(session.token);
-        if (!ignore) setUsers(payload);
-      } catch (error) {
-        if (!ignore) setJobError(error.message);
-      }
-    }
-
-    loadUsers();
-    return () => {
-      ignore = true;
-    };
-  }, [session?.token, session?.user?.role]);
+  }, [session?.user?.id, activeJob?.status]);
 
   useEffect(() => {
     if (!session?.user || !activeJob?.id) return;
     if (activeJob.status === "completed" || activeJob.status === "failed") return;
 
     let cancelled = false;
+    const controller = new AbortController();
 
     async function pollJob() {
       let delay = 700;
       while (!cancelled) {
         try {
-          const nextJob = await api.getAnalysisJob(session.token, activeJob.id);
+          const nextJob = await api.getAnalysisJob(session.token, activeJob.id, { signal: controller.signal });
           if (cancelled) return;
           setActiveJob(nextJob);
           setJobs((current) => upsertJob(current, nextJob));
           if (nextJob.status === "completed") {
-            const result = await api.getAnalysisResult(session.token, nextJob.id);
+            const result = await api.getAnalysisResult(session.token, nextJob.id, { signal: controller.signal });
             if (!cancelled) setActiveResult(result);
             return;
           }
           if (nextJob.status === "failed") return;
-          await wait(delay);
+          await sleep(delay, controller.signal);
           delay = Math.min(delay + 250, 1500);
         } catch (error) {
+          if (isAbortError(error)) return;
           if (!cancelled) setJobError(error.message);
           return;
         }
@@ -406,20 +423,23 @@ export function App() {
     pollJob();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [session?.token, activeJob?.id]);
+  }, [session?.user?.id, activeJob?.id]);
 
   useEffect(() => {
-    if (!session?.token || !activeJob?.id) return;
+    if (!session?.user || !activeJob?.id) return;
     if (activeJob.status !== "completed" || activeResult?.job_id === activeJob.id) return;
 
     let cancelled = false;
+    const controller = new AbortController();
 
     async function loadCompletedResult() {
       try {
-        const result = await api.getAnalysisResult(session.token, activeJob.id);
+        const result = await api.getAnalysisResult(session.token, activeJob.id, { signal: controller.signal });
         if (!cancelled) setActiveResult(result);
       } catch (error) {
+        if (isAbortError(error)) return;
         if (!cancelled) setJobError(error.message);
       }
     }
@@ -427,8 +447,9 @@ export function App() {
     loadCompletedResult();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [session?.token, activeJob?.id, activeJob?.status, activeResult?.job_id]);
+  }, [session?.user?.id, activeJob?.id, activeJob?.status, activeResult?.job_id]);
 
   async function handleLogin(event) {
     event.preventDefault();
@@ -444,43 +465,18 @@ export function App() {
     try {
       const payload = await api.login(normalized.email, normalized.password);
       const nextSession = {
-        token: payload.access_token || "",
+        token: "",
         user: payload.user,
         memberships: payload.memberships,
       };
       setSession(nextSession);
       writeSession(nextSession);
-      writeAuthToken(nextSession.token);
       setLoginForm((current) => ({ ...current, password: "" }));
       setActiveTab("analysis");
     } catch (error) {
       setAuthError(error.message);
     } finally {
       setAuthLoading(false);
-    }
-  }
-
-  async function handleRegister(event) {
-    event.preventDefault();
-    setAuthError("");
-    setRegisterMessage("");
-    const normalized = {
-      full_name: sanitizeText(registerForm.full_name),
-      email: sanitizeEmail(registerForm.email),
-      password: registerForm.password,
-    };
-    const validationError = validateAuthForm(normalized);
-    if (validationError) {
-      setAuthError(validationError);
-      return;
-    }
-    try {
-      const created = await api.register(normalized);
-      setRegisterForm({ full_name: "", email: "", password: "" });
-      setRegisterMessage(`Conta criada para ${created.email} com privilegio minimo.`);
-      setAuthView("login");
-    } catch (error) {
-      setAuthError(error.message);
     }
   }
 
@@ -499,7 +495,7 @@ export function App() {
       setActiveJob(created);
       setJobs((current) => upsertJob(current, created));
       setHiddenJobIds((current) => current.filter((item) => item !== created.id));
-      await wait(250);
+      await sleep(250);
       const immediateJob = await api.getAnalysisJob(session.token, created.id);
       setActiveJob(immediateJob);
       setJobs((current) => upsertJob(current, immediateJob));
@@ -515,31 +511,26 @@ export function App() {
     }
   }
 
-  async function handleCreateUser(event) {
+  async function handleChangePassword(event) {
     event.preventDefault();
-    if (!session?.user || session.user?.role !== "admin") return;
-    setJobError("");
+    if (!session?.user) return;
+    setPasswordLoading(true);
+    setPasswordError("");
     setFormMessage("");
-    try {
-      const created = await api.createUser(session.token, userForm);
-      setUsers((current) => [created, ...current]);
-      setUserForm({ full_name: "", email: "", password: "", role: "minimum" });
-      setFormMessage(`Usuario ${created.email} criado com privilegio minimo.`);
-      setActiveTab("users");
-    } catch (error) {
-      setJobError(error.message);
+    const validationError = validatePasswordChangeForm(passwordForm);
+    if (validationError) {
+      setPasswordError(validationError);
+      setPasswordLoading(false);
+      return;
     }
-  }
-
-  async function handleRoleChange(userId, role) {
-    if (!session?.user || session.user.role !== "admin") return;
-    setJobError("");
     try {
-      const updated = await api.updateUserRole(session.token, userId, { role });
-      setUsers((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setFormMessage(`Privilegio de ${updated.email} atualizado para ${updated.role}.`);
+      await api.changePassword(session.token, passwordForm);
+      setPasswordForm({ current_password: "", new_password: "", confirm_password: "" });
+      setFormMessage("Senha atualizada com sucesso.");
     } catch (error) {
-      setJobError(error.message);
+      setPasswordError(error.message);
+    } finally {
+      setPasswordLoading(false);
     }
   }
 
@@ -574,10 +565,9 @@ export function App() {
   function logout() {
     api.logout(session?.token).catch(() => null);
     clearSession();
-    writeAuthToken("");
     setSession(null);
     setJobs([]);
-    setUsers([]);
+    setPasswordForm({ current_password: "", new_password: "", confirm_password: "" });
     setActiveJob(null);
     setActiveResult(null);
   }
@@ -597,6 +587,7 @@ export function App() {
 
   const visibleJobs = jobs.filter((job) => !hiddenJobIds.includes(job.id));
   const filteredFindings = activeResult?.findings?.filter((item) => !shouldHideFinding(item)) || [];
+  const investigationGuide = activeResult?.scoring?.investigation_guide || activeResult?.risk_meta?.investigation_guide || null;
   const activeProviderView = activeOsintLink
     ? buildProviderViewerData(activeOsintLink, filteredFindings, activeResult)
     : null;
@@ -617,63 +608,26 @@ export function App() {
           <form className="auth-form" onSubmit={handleLogin}>
             <div className="auth-head">
               <div>
-                <p className="eyebrow">{authView === "login" ? "Secure Login" : "Self Registration"}</p>
-                <h1>{authView === "login" ? "Analysis Workspace" : "Create Account"}</h1>
+                <p className="eyebrow">Secure Login</p>
+                <h1>Analysis Workspace</h1>
               </div>
               <button type="button" className="theme-toggle" onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}>
                 {theme === "dark" ? "DARK" : "LIGHT"}
               </button>
             </div>
-            {authView === "login" ? (
-              <>
-                <label>
-                  Email
-                  <input type="email" value={loginForm.email} onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))} />
-                </label>
-                <label>
-                  Password
-                  <input type="password" autoComplete="current-password" value={loginForm.password} onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))} />
-                </label>
-                {authError ? <p className="error-text">{authError}</p> : null}
-                {registerMessage ? <p className="success-text">{registerMessage}</p> : null}
-                <button className="primary-button" type="submit" disabled={authLoading}>
-                  {authLoading ? "Signing in..." : "Enter workspace"}
-                </button>
-                <button type="button" className="ghost-button auth-switch" onClick={() => {
-                  setAuthError("");
-                  setRegisterMessage("");
-                  setAuthView("register");
-                }}>
-                  Nao tem uma conta?
-                </button>
-              </>
-            ) : null}
+            <label>
+              Email
+              <input type="email" value={loginForm.email} onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))} />
+            </label>
+            <label>
+              Password
+              <input type="password" autoComplete="current-password" value={loginForm.password} onChange={(event) => setLoginForm((current) => ({ ...current, password: event.target.value }))} />
+            </label>
+            {authError ? <p className="error-text">{authError}</p> : null}
+            <button className="primary-button" type="submit" disabled={authLoading}>
+              {authLoading ? "Signing in..." : "Enter workspace"}
+            </button>
           </form>
-          {authView === "register" ? (
-            <form className="auth-form" onSubmit={handleRegister}>
-              <label>
-                Nome completo
-                <input type="text" value={registerForm.full_name} onChange={(event) => setRegisterForm((current) => ({ ...current, full_name: event.target.value }))} />
-              </label>
-              <label>
-                Email
-                <input type="email" value={registerForm.email} onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))} />
-              </label>
-              <label>
-                Senha
-                <input type="password" autoComplete="new-password" value={registerForm.password} onChange={(event) => setRegisterForm((current) => ({ ...current, password: event.target.value }))} />
-              </label>
-              {authError ? <p className="error-text">{authError}</p> : null}
-              <button className="primary-button" type="submit">Criar conta</button>
-              <button type="button" className="ghost-button auth-switch" onClick={() => {
-                setAuthError("");
-                setRegisterMessage("");
-                setAuthView("login");
-              }}>
-                Ja tem uma conta?
-              </button>
-            </form>
-          ) : null}
         </section>
       </main>
     );
@@ -702,11 +656,9 @@ export function App() {
             <button type="button" className={`tab-button side-tab ${activeTab === "threat" ? "tab-button-active" : ""}`} onClick={() => setActiveTab("threat")}>
               Threat Intell
             </button>
-            {session.user?.role === "admin" ? (
-              <button type="button" className={`tab-button side-tab ${activeTab === "users" ? "tab-button-active" : ""}`} onClick={() => setActiveTab("users")}>
-                Usuarios
-              </button>
-            ) : null}
+            <button type="button" className={`tab-button side-tab ${activeTab === "password" ? "tab-button-active" : ""}`} onClick={() => setActiveTab("password")}>
+              Minha senha
+            </button>
           </nav>
         </div>
         <div className="side-nav-bottom">
@@ -722,7 +674,7 @@ export function App() {
         <header className="hero-bar">
           <div>
             <p className="eyebrow">SOC Analyst Console</p>
-            <h1>{activeTab === "analysis" ? "Analise" : activeTab === "mitre" ? "MITRE ATT&CK" : activeTab === "threat" ? "Threat Intell" : "Usuarios"}</h1>
+            <h1>{activeTab === "analysis" ? "Analise" : activeTab === "mitre" ? "MITRE ATT&CK" : activeTab === "threat" ? "Threat Intell" : "Minha senha"}</h1>
           </div>
           <div className="hero-actions">
             <span className="hero-meta">IOC Enrichment</span>
@@ -819,10 +771,49 @@ export function App() {
                       <strong>{activeResult.risk_score}</strong>
                     </article>
                     <article className="risk-card">
+                      <span className="summary-label">Confianca</span>
+                      <strong>{activeResult.confidence_score ?? "—"}</strong>
+                    </article>
+                    <article className="risk-card">
                       <span className="summary-label">Veredito</span>
                       <strong>{activeResult.verdict}</strong>
                     </article>
                   </div>
+
+                  {investigationGuide ? (
+                    <div className="result-section">
+                      <div className="panel-head compact-head">
+                        <h3>Guia SOC</h3>
+                        <div className="section-head-actions">
+                          <span className="muted-line">Triagem N1/N2</span>
+                          <button
+                            type="button"
+                            className="ghost-button compact-toggle"
+                            aria-expanded={!isSocGuideCollapsed}
+                            onClick={() => setIsSocGuideCollapsed((current) => !current)}
+                          >
+                            {isSocGuideCollapsed ? "Expandir" : "Minimizar"}
+                          </button>
+                        </div>
+                      </div>
+                      {!isSocGuideCollapsed ? (
+                        <div className="findings-grid">
+                          {Object.entries(investigationGuide).map(([section, items]) => (
+                            <article className="finding-card" key={section}>
+                              <div className="finding-card-head">
+                                <span className="provider-chip">{section}</span>
+                              </div>
+                              <ul className="provider-list">
+                                {(Array.isArray(items) ? items : []).map((item, index) => (
+                                  <li key={`${section}-${index}`}>{item}</li>
+                                ))}
+                              </ul>
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div className="result-section">
                     <div className="panel-head compact-head">
@@ -898,51 +889,58 @@ export function App() {
           <Suspense fallback={<section className="threat-layout"><div className="panel"><div className="empty-state"><h3>Carregando Threat Intell</h3></div></div></section>}>
             <ThreatIntellView token={session.token} />
           </Suspense>
-        ) : (
+        ) : activeTab === "password" ? (
           <section className="management-layout">
             <div className="panel">
               <div className="panel-head">
-                <h2>Usuarios</h2>
-                <p className="muted-line">Novas contas sempre comecam com privilegio minimo.</p>
+                <h2>Alterar senha</h2>
+                <p className="muted-line">Apenas a senha da sua propria identidade autenticada pode ser alterada.</p>
               </div>
-              <form className="analysis-form" onSubmit={handleCreateUser}>
+              <form className="analysis-form" onSubmit={handleChangePassword}>
                 <label>
-                  Nome completo
-                  <input type="text" value={userForm.full_name} onChange={(event) => setUserForm((current) => ({ ...current, full_name: event.target.value }))} />
+                  Senha atual
+                  <input type="password" autoComplete="current-password" value={passwordForm.current_password} onChange={(event) => setPasswordForm((current) => ({ ...current, current_password: event.target.value }))} />
                 </label>
                 <label>
-                  Email
-                  <input type="email" value={userForm.email} onChange={(event) => setUserForm((current) => ({ ...current, email: event.target.value }))} />
+                  Nova senha
+                  <input type="password" autoComplete="new-password" value={passwordForm.new_password} onChange={(event) => setPasswordForm((current) => ({ ...current, new_password: event.target.value }))} />
                 </label>
                 <label>
-                  Senha inicial
-                  <input type="password" autoComplete="new-password" value={userForm.password} onChange={(event) => setUserForm((current) => ({ ...current, password: event.target.value }))} />
+                  Confirmar nova senha
+                  <input type="password" autoComplete="new-password" value={passwordForm.confirm_password} onChange={(event) => setPasswordForm((current) => ({ ...current, confirm_password: event.target.value }))} />
                 </label>
+                {passwordError ? <p className="error-text">{passwordError}</p> : null}
                 {formMessage ? <p className="success-text">{formMessage}</p> : null}
-                {jobError ? <p className="error-text">{jobError}</p> : null}
-                <button className="primary-button" type="submit">Criar usuario</button>
+                <button className="primary-button" type="submit" disabled={passwordLoading}>
+                  {passwordLoading ? "Atualizando..." : "Alterar senha"}
+                </button>
               </form>
             </div>
             <div className="panel">
               <div className="panel-head">
-                <h2>Contas cadastradas</h2>
-                <p className="muted-line">Somente administradores podem visualizar contas e alterar privilegios.</p>
+                <h2>Sessao autenticada</h2>
+                <p className="muted-line">Provisionamento de contas e privilegios permanece fora do front-end.</p>
               </div>
-              <div className="job-history">
-                {users.map((user) => (
-                  <div className="history-card" key={user.id}>
-                    <strong>{user.full_name}</strong>
-                    <span>{user.email}</span>
-                    <select value={user.role} onChange={(event) => handleRoleChange(user.id, event.target.value)}>
-                      <option value="minimum">minimum</option>
-                      <option value="analyst">analyst</option>
-                      <option value="manager">manager</option>
-                      <option value="admin">admin</option>
-                    </select>
-                    <small>{user.role} • {user.status}</small>
-                  </div>
-                ))}
-                {users.length ? null : <p className="muted-line">Nenhum usuario disponivel.</p>}
+              <div className="security-summary">
+                <div className="history-card">
+                  <strong>{session.user.full_name}</strong>
+                  <span>{session.user.email}</span>
+                  <small>{session.user.role} • {session.user.status}</small>
+                </div>
+                <div className="history-card">
+                  <strong>Provisionamento externo</strong>
+                  <span>Contas devem ser criadas somente por administradores via terminal/CLI.</span>
+                  <small>Sem rota, aba ou chamada de registro no front-end.</small>
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : (
+          <section className="analysis-layout">
+            <div className="panel">
+              <div className="empty-state">
+                <h3>Secao indisponivel</h3>
+                <p className="muted-line">A area solicitada nao esta habilitada para esta sessao.</p>
               </div>
             </div>
           </section>
@@ -988,6 +986,14 @@ export function App() {
                   <p className="eyebrow">Resumo extraido</p>
                   <p>{activeProviderView?.verdict}</p>
                 </div>
+                {activeProviderView?.integrationStatus ? (
+                  <div className={`provider-status-card provider-status-${activeProviderView.integrationStatus.tone}`}>
+                    <p className="eyebrow">Status da integração</p>
+                    <h3>{activeProviderView.integrationStatus.title}</h3>
+                    <p>{activeProviderView.integrationStatus.message}</p>
+                    {activeProviderView.integrationStatus.action ? <p className="muted-line">{activeProviderView.integrationStatus.action}</p> : null}
+                  </div>
+                ) : null}
                 <div className="provider-view-card provider-view-card-wide">
                   <p className="eyebrow">Detalhes estruturados</p>
                   {activeProviderView?.details?.length ? (

@@ -498,18 +498,37 @@ select {
 }
 
 .result-section {
+  min-width: 0;
+  max-width: 100%;
   display: grid;
   gap: 14px;
   padding-top: 6px;
 }
 
+.section-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.compact-toggle {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
 .findings-grid {
+  min-width: 0;
+  max-width: 100%;
   display: grid;
   gap: 10px;
 }
 
 .finding-card {
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   padding: 14px 16px;
   border-radius: 14px;
   border: 1px solid var(--border);
@@ -522,6 +541,23 @@ select {
   margin: 0;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+.provider-list {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.provider-list li {
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .finding-card-head {
@@ -861,6 +897,35 @@ select {
   align-content: start;
 }
 
+.provider-status-card {
+  min-width: 0;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.provider-status-card p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.provider-status-warning {
+  border-color: rgba(255, 209, 102, 0.42);
+  background:
+    linear-gradient(180deg, rgba(255, 209, 102, 0.12), transparent),
+    rgba(17, 12, 28, 0.78);
+}
+
+.provider-status-ok {
+  border-color: rgba(123, 255, 178, 0.36);
+  background:
+    linear-gradient(180deg, rgba(123, 255, 178, 0.1), transparent),
+    rgba(17, 12, 28, 0.78);
+}
+
 .provider-view-card-wide {
   grid-column: 1 / -1;
 }
@@ -892,6 +957,18 @@ select {
 :root[data-theme="light"] .provider-view-card {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.82)),
+    rgba(255, 255, 255, 0.88);
+}
+
+:root[data-theme="light"] .provider-status-warning {
+  background:
+    linear-gradient(180deg, rgba(183, 121, 31, 0.12), rgba(255, 255, 255, 0.82)),
+    rgba(255, 255, 255, 0.88);
+}
+
+:root[data-theme="light"] .provider-status-ok {
+  background:
+    linear-gradient(180deg, rgba(25, 135, 84, 0.1), rgba(255, 255, 255, 0.82)),
     rgba(255, 255, 255, 0.88);
 }
 

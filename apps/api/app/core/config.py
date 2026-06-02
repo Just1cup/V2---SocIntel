@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     celery_broker_url: str | None = None
     celery_result_backend: str | None = None
     legacy_backend_path: str | None = None
+    vt_api_key: str | None = None
+    abuse_api_key: str | None = None
+    otx_api_key: str | None = None
+    urlscan_api_key: str | None = None
+    shodan_api_key: str | None = None
+    abuse_ch_api_key: str | None = None
+    urlhaus_auth_key: str | None = None
+    malwarebazaar_api_key: str | None = None
     jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
@@ -29,8 +37,16 @@ class Settings(BaseSettings):
     auth_cookie_samesite: str = "lax"
     login_rate_limit_attempts: int = 5
     login_rate_limit_window_seconds: int = 300
+    analysis_rate_limit_jobs: int = 30
+    analysis_rate_limit_window_seconds: int = 3600
+    enable_abuse_ch_enrichment: bool = True
+    ioc_enrichment_timeout_seconds: float = 8.0
     taxii_request_timeout_seconds: float = 20.0
     taxii_cache_ttl_seconds: int = 600
+    taxii_cache_max_entries: int = 256
+    taxii_cache_max_bytes: int = 10 * 1024 * 1024
+    taxii_cache_max_entry_bytes: int = 2 * 1024 * 1024
+    taxii_response_max_bytes: int = 8 * 1024 * 1024
     taxii_mitre_base_url: str = "https://attack-taxii.mitre.org"
     taxii_mitre_api_root: str = "/api/v21"
 
@@ -49,6 +65,12 @@ class Settings(BaseSettings):
     def validate_secrets(self) -> "Settings":
         if self.jwt_secret.strip().lower() in UNSAFE_SECRET_VALUES or len(self.jwt_secret) < 32:
             raise ValueError("JWT_SECRET must be a strong random value of at least 32 characters.")
+        if self.environment == "production" and not self.auth_cookie_secure:
+            raise ValueError("AUTH_COOKIE_SECURE must be true in production.")
+        if self.auth_cookie_samesite.lower() not in {"strict", "lax", "none"}:
+            raise ValueError("AUTH_COOKIE_SAMESITE must be strict, lax, or none.")
+        if self.auth_cookie_samesite.lower() == "none" and not self.auth_cookie_secure:
+            raise ValueError("AUTH_COOKIE_SECURE must be true when SameSite=None.")
         return self
 
 

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import DbSession, require_admin
 from app.models.user import User
-from app.schemas.user import UserCreate, UserListItem, UserRegister, UserRoleUpdate
+from app.schemas.user import UserCreate, UserListItem, UserRoleUpdate
 from app.services.audit_service import AuditService
 from app.services.user_service import UserService
 
@@ -60,46 +60,6 @@ def create_user(
         resource_id=user.id,
         actor=current_user,
         details={"role": user.role},
-    )
-    db.commit()
-    return UserListItem(
-        id=user.id,
-        tenant_id=user.tenant_id,
-        email=user.email,
-        full_name=user.full_name,
-        role=user.role,
-        status=user.status,
-    )
-
-
-@router.post("/register", response_model=UserListItem, status_code=status.HTTP_201_CREATED)
-def register_user(
-    payload: UserRegister,
-    db: DbSession,
-) -> UserListItem:
-    service = UserService(db)
-    existing = service.get_by_email(payload.email)
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="User email already exists.",
-        )
-    try:
-        user = service.create(
-            tenant_id="tenant_default",
-            email=payload.email,
-            full_name=payload.full_name,
-            password=payload.password,
-            role="minimum",
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    AuditService(db).record(
-        action="user_registered",
-        resource_type="user",
-        resource_id=user.id,
-        tenant_id=user.tenant_id,
-        details={"email": user.email},
     )
     db.commit()
     return UserListItem(

@@ -68,7 +68,7 @@ start_process() {
 }
 
 cleanup() {
-  "$ROOT_DIR/scripts/stop_app.sh" >/dev/null 2>&1 || true
+  "$ROOT_DIR/scripts/stop_app.sh" --keep-docker >/dev/null 2>&1 || true
 }
 
 trap cleanup INT TERM
@@ -97,7 +97,7 @@ if [[ -z "${POSTGRES_PASSWORD:-}" || -z "${REDIS_PASSWORD:-}" ]]; then
 fi
 
 echo "Starting infrastructure..."
-(cd "$INFRA_DIR" && docker compose up -d)
+docker compose --env-file "$ROOT_DIR/.env" -f "$INFRA_DIR/docker-compose.yml" up -d
 
 echo "Preparing database..."
 (
@@ -140,5 +140,6 @@ echo "- $LOG_DIR/worker.log"
 echo "- $LOG_DIR/web.log"
 echo
 echo "Press Ctrl+C to stop API, worker, and web. Docker services stay up."
+echo "Run ./scripts/stop_app.sh to stop API, worker, web, and Docker services."
 
 wait

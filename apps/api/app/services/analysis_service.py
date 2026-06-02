@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.analysis_job import AnalysisJob
 from app.models.analysis_result import AnalysisResult
 from app.models.user import User
@@ -46,6 +49,20 @@ class AnalysisService:
         self.db.refresh(job)
         process_analysis_job.delay(job.id)
         return job
+
+    def rate_limit_exceeded(self, user: User) -> bool:
+        window_start = datetime.now(timezone.utc) - timedelta(seconds=settings.analysis_rate_limit_window_seconds)
+        recent_count = (
+            self.db.query(func.count(AnalysisJob.id))
+            .filter(
+                AnalysisJob.tenant_id == user.tenant_id,
+                AnalysisJob.requested_by_user_id == user.id,
+                AnalysisJob.created_at >= window_start,
+            )
+            .scalar()
+            or 0
+        )
+        return recent_count >= settings.analysis_rate_limit_jobs
 
     def get_job_for_user(self, user: User, job_id: str) -> AnalysisJob | None:
         job = (
@@ -111,4 +128,6 @@ class AnalysisService:
             "timings_ms": meta.get("timings_ms", {}),
             "provider_details": meta.get("provider_details", {}),
             "legacy_verdict": meta.get("legacy_verdict"),
+            "confidence_score": meta.get("confidence_score"),
+            "scoring": meta.get("scoring", {}),
         }

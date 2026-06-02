@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import { upsertBoundedRecord } from "./boundedRecordCache";
+
+const MAX_TECHNIQUE_DETAIL_CACHE_ENTRIES = 50;
 
 function normalizeSearch(value) {
   return String(value || "").trim().toLowerCase();
@@ -70,25 +73,32 @@ function createCopyLinkHandler(url, setStatus) {
   };
 }
 
+function isAbortError(error) {
+  return error?.name === "AbortError";
+}
+
 export function MitreView({ token }) {
   const [catalog, setCatalog] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [status, setStatus] = useState("Carregando catálogo do MITRE ATT&CK...");
   const [techniqueDetails, setTechniqueDetails] = useState({});
   const [loadingTechniqueIds, setLoadingTechniqueIds] = useState({});
+  const detailControllers = useRef(new Set());
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
 
     async function loadCatalog() {
       try {
-        const payload = await api.getMitreIndex(token);
+        const payload = await api.getMitreIndex(token, { signal: controller.signal });
         if (cancelled) return;
         setCatalog(payload);
         setStatus(
           `Catálogo local carregado com ${payload.tacticCount} táticas, ${payload.techniqueCount} técnicas e ${payload.subtechniqueCount} sub-técnicas.`,
         );
       } catch (error) {
+        if (isAbortError(error)) return;
         if (!cancelled) {
           setStatus(`Não foi possível carregar o catálogo do MITRE ATT&CK. Detalhe: ${error.message}`);
         }
@@ -98,8 +108,16 @@ export function MitreView({ token }) {
     loadCatalog();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [token]);
+
+  useEffect(() => {
+    return () => {
+      detailControllers.current.forEach((controller) => controller.abort());
+      detailControllers.current.clear();
+    };
+  }, []);
 
   const filteredCatalog = catalog ? filterCatalog(catalog, searchTerm) : null;
 
@@ -125,14 +143,22 @@ export function MitreView({ token }) {
     if (!externalId || techniqueDetails[externalId] || loadingTechniqueIds[externalId]) {
       return;
     }
+    const controller = new AbortController();
+    detailControllers.current.add(controller);
     setLoadingTechniqueIds((current) => ({ ...current, [externalId]: true }));
     try {
-      const payload = await api.getMitreTechniqueDetail(token, externalId);
-      setTechniqueDetails((current) => ({ ...current, [externalId]: payload }));
+      const payload = await api.getMitreTechniqueDetail(token, externalId, { signal: controller.signal });
+      setTechniqueDetails((current) =>
+        upsertBoundedRecord(current, externalId, payload, MAX_TECHNIQUE_DETAIL_CACHE_ENTRIES),
+      );
     } catch (error) {
+      if (isAbortError(error)) return;
       setStatus(`Não foi possível carregar detalhes de ${externalId}. Detalhe: ${error.message}`);
     } finally {
-      setLoadingTechniqueIds((current) => ({ ...current, [externalId]: false }));
+      detailControllers.current.delete(controller);
+      if (!controller.signal.aborted) {
+        setLoadingTechniqueIds((current) => ({ ...current, [externalId]: false }));
+      }
     }
   }
 

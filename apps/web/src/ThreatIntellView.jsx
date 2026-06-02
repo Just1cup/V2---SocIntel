@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
+import { capTaxiiObjectsPayload, createJsonPreview, taxiiObjectCount, taxiiPayloadWasTruncated } from "./taxiiPayload";
 
 const OBJECT_TYPES = ["attack-pattern", "campaign", "course-of-action", "intrusion-set", "malware", "tool", "indicator", "relationship"];
 
@@ -45,10 +46,6 @@ function feedTypeCounts(objects) {
   }, {});
 }
 
-function compactJson(value) {
-  return JSON.stringify(value, null, 2);
-}
-
 function listValue(value) {
   if (Array.isArray(value)) return value.filter(Boolean).join(", ");
   return value || "—";
@@ -59,6 +56,10 @@ function formatDate(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString();
+}
+
+function isAbortError(error) {
+  return error?.name === "AbortError";
 }
 
 function objectUrl(stixObject) {
@@ -227,18 +228,21 @@ export function ThreatIntellView({ token }) {
   const [activeObject, setActiveObject] = useState(null);
   const [quickSearch, setQuickSearch] = useState("");
   const [loading, setLoading] = useState(false);
+  const requestControllers = useRef(new Set());
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
 
     async function loadSources() {
       try {
-        const payload = await api.listTaxiiSources(token);
+        const payload = await api.listTaxiiSources(token, { signal: controller.signal });
         if (cancelled) return;
         setSources(payload);
         setSelectedSourceId((current) => current || payload[0]?.id || "mitre-attack");
         setStatus(`${payload.length} fonte TAXII disponível.`);
       } catch (error) {
+        if (isAbortError(error)) return;
         if (!cancelled) setStatus(`Não foi possível carregar fontes TAXII. Detalhe: ${error.message}`);
       }
     }
@@ -246,23 +250,26 @@ export function ThreatIntellView({ token }) {
     loadSources();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [token]);
 
   useEffect(() => {
     if (!selectedSourceId) return;
     let cancelled = false;
+    const controller = new AbortController();
 
     async function loadCollections() {
       setStatus("Carregando coleções TAXII...");
       try {
-        const payload = await api.getTaxiiCollections(token, selectedSourceId);
+        const payload = await api.getTaxiiCollections(token, selectedSourceId, { signal: controller.signal });
         if (cancelled) return;
         const nextCollections = payload.data?.collections || [];
         setCollections(nextCollections);
         setSelectedCollectionId((current) => current || nextCollections[0]?.id || "");
         setStatus(`${nextCollections.length} coleções disponíveis em ${payload.source.name}.`);
       } catch (error) {
+        if (isAbortError(error)) return;
         if (!cancelled) setStatus(`Não foi possível carregar coleções. Detalhe: ${error.message}`);
       }
     }
@@ -270,8 +277,16 @@ export function ThreatIntellView({ token }) {
     loadCollections();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [token, selectedSourceId]);
+
+  useEffect(() => {
+    return () => {
+      requestControllers.current.forEach((controller) => controller.abort());
+      requestControllers.current.clear();
+    };
+  }, []);
 
   const selectedCollection = useMemo(
     () => collections.find((collection) => collection.id === selectedCollectionId),
@@ -279,7 +294,14 @@ export function ThreatIntellView({ token }) {
   );
 
   const objects = useMemo(() => objectsPayload?.data?.objects || [], [objectsPayload]);
-  const manifestObjects = useMemo(() => manifestPayload?.data?.objects || [], [manifestPayload]);
+  const objectsTotalCount = taxiiObjectCount(objectsPayload);
+  const manifestTotalCount = taxiiObjectCount(manifestPayload);
+  const objectsTruncated = taxiiPayloadWasTruncated(objectsPayload);
+  const manifestTruncated = taxiiPayloadWasTruncated(manifestPayload);
+  const rawPayloadPreview = useMemo(
+    () => createJsonPreview(manifestPayload?.data || objectsPayload?.data || {}),
+    [manifestPayload, objectsPayload],
+  );
   const filteredObjects = useMemo(() => {
     const term = quickSearch.trim().toLowerCase();
     if (!term) return objects;
@@ -296,16 +318,31 @@ export function ThreatIntellView({ token }) {
   async function loadManifest(event) {
     event.preventDefault();
     if (!selectedSourceId || !selectedCollectionId) return;
+    const controller = new AbortController();
+    requestControllers.current.add(controller);
     setLoading(true);
     setStatus("Consultando manifesto TAXII...");
     try {
-      const payload = await api.getTaxiiManifest(token, selectedSourceId, selectedCollectionId, filters);
+      const payload = capTaxiiObjectsPayload(
+        await api.getTaxiiManifest(token, selectedSourceId, selectedCollectionId, filters, {
+          signal: controller.signal,
+        }),
+      );
+      const totalObjects = taxiiObjectCount(payload);
       setManifestPayload(payload);
-      setStatus(`Manifesto carregado com ${payload.data?.objects?.length || 0} entradas.`);
+      setStatus(
+        `Manifesto carregado com ${totalObjects} entradas${
+          taxiiPayloadWasTruncated(payload) ? ` (${payload.data.objects_retained_count} mantidas em memória).` : "."
+        }`,
+      );
     } catch (error) {
+      if (isAbortError(error)) return;
       setStatus(`Falha ao consultar manifesto. Detalhe: ${error.message}`);
     } finally {
-      setLoading(false);
+      requestControllers.current.delete(controller);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   }
 
@@ -316,17 +353,32 @@ export function ThreatIntellView({ token }) {
       setStatus("Informe ao menos um filtro antes de buscar objetos STIX.");
       return;
     }
+    const controller = new AbortController();
+    requestControllers.current.add(controller);
     setLoading(true);
     setStatus("Consultando objetos STIX via TAXII...");
     try {
-      const payload = await api.getTaxiiObjects(token, selectedSourceId, selectedCollectionId, filters);
+      const payload = capTaxiiObjectsPayload(
+        await api.getTaxiiObjects(token, selectedSourceId, selectedCollectionId, filters, {
+          signal: controller.signal,
+        }),
+      );
+      const totalObjects = taxiiObjectCount(payload);
       setObjectsPayload(payload);
       setActiveObject(null);
-      setStatus(`Objetos carregados: ${payload.data?.objects?.length || 0}.`);
+      setStatus(
+        `Objetos carregados: ${totalObjects}${
+          taxiiPayloadWasTruncated(payload) ? ` (${payload.data.objects_retained_count} mantidos em memória).` : "."
+        }`,
+      );
     } catch (error) {
+      if (isAbortError(error)) return;
       setStatus(`Falha ao consultar objetos. Detalhe: ${error.message}`);
     } finally {
-      setLoading(false);
+      requestControllers.current.delete(controller);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   }
 
@@ -371,11 +423,11 @@ export function ThreatIntellView({ token }) {
           </article>
           <article className="mitre-summary-card">
             <p className="mitre-summary-label">Manifesto</p>
-            <p className="mitre-summary-value">{manifestObjects.length}</p>
+            <p className="mitre-summary-value">{manifestTotalCount}</p>
           </article>
           <article className="mitre-summary-card">
             <p className="mitre-summary-label">Objetos</p>
-            <p className="mitre-summary-value">{objects.length}</p>
+            <p className="mitre-summary-value">{objectsTotalCount}</p>
           </article>
         </div>
       </div>
@@ -457,7 +509,9 @@ export function ThreatIntellView({ token }) {
           <div className="panel-head">
             <div>
               <h2>Objetos STIX</h2>
-              <p className="muted-line">{filteredObjects.length} em exibição de {objects.length} retornados.</p>
+              <p className="muted-line">
+                {filteredObjects.length} em exibição de {objectsTotalCount} retornados{objectsTruncated ? " (amostra limitada em memória)" : ""}.
+              </p>
             </div>
             <div className="threat-type-filter">
               {OBJECT_TYPES.slice(0, 5).map((type) => (
@@ -510,7 +564,9 @@ export function ThreatIntellView({ token }) {
           <div className="panel-head">
             <div>
               <h2>Distribuição do feed</h2>
-              <p className="muted-line">Resumo dos objetos retornados por tipo STIX.</p>
+              <p className="muted-line">
+                Resumo dos objetos mantidos em memória{objectsTruncated ? " após limite aplicado" : ""}.
+              </p>
             </div>
           </div>
           <div className="threat-distribution-list">
@@ -537,7 +593,10 @@ export function ThreatIntellView({ token }) {
               <p className="muted-line">Preview bruto para inspeção técnica e integrações futuras.</p>
             </div>
           </div>
-          <pre className="threat-json-view">{compactJson(manifestPayload?.data || objectsPayload?.data || {})}</pre>
+          {manifestTruncated || objectsTruncated ? (
+            <p className="muted-line">Preview limitado para reduzir retenção de heap em sessões longas.</p>
+          ) : null}
+          <pre className="threat-json-view">{rawPayloadPreview}</pre>
         </div>
       </div>
 

@@ -6,7 +6,7 @@ function defaultApiBaseUrl() {
   return `http://${host}:8000/api/v1`;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl();
+const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || defaultApiBaseUrl();
 
 function buildHeaders(options = {}) {
   return {
@@ -16,7 +16,7 @@ function buildHeaders(options = {}) {
   };
 }
 
-async function request(path, options = {}) {
+export async function request(path, options = {}) {
   const headers = buildHeaders(options);
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -49,58 +49,49 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  login: (email, password) =>
+  login: (email, password, requestOptions = {}) =>
     request("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
+      ...requestOptions,
     }),
-  register: (payload) =>
-    request("/users/register", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  logout: (token) =>
+  logout: (token, requestOptions = {}) =>
     request("/auth/logout", {
       method: "POST",
       token,
+      ...requestOptions,
     }),
-  createAnalysisJob: (token, payload) =>
+  changePassword: (token, payload, requestOptions = {}) =>
+    request("/auth/change-password", {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+      ...requestOptions,
+    }),
+  createAnalysisJob: (token, payload, requestOptions = {}) =>
     request("/analysis-jobs/", {
       method: "POST",
       token,
       body: JSON.stringify(payload),
+      ...requestOptions,
     }),
-  listUsers: (token) =>
-    request("/users/", {
-      token,
-    }),
-  createUser: (token, payload) =>
-    request("/users/", {
-      method: "POST",
-      token,
-      body: JSON.stringify(payload),
-    }),
-  updateUserRole: (token, userId, payload) =>
-    request(`/users/${userId}/role`, {
-      method: "PATCH",
-      token,
-      body: JSON.stringify(payload),
-    }),
-  listAnalysisJobs: (token) => request("/analysis-jobs/", { token }),
-  getAnalysisJob: (token, jobId) => request(`/analysis-jobs/${jobId}`, { token }),
-  getAnalysisResult: (token, jobId) => request(`/analysis-jobs/${jobId}/result`, { token }),
-  getMitreIndex: (token) =>
+  listAnalysisJobs: (token, requestOptions = {}) => request("/analysis-jobs/", { token, ...requestOptions }),
+  getAnalysisJob: (token, jobId, requestOptions = {}) => request(`/analysis-jobs/${jobId}`, { token, ...requestOptions }),
+  getAnalysisResult: (token, jobId, requestOptions = {}) => request(`/analysis-jobs/${jobId}/result`, { token, ...requestOptions }),
+  getMitreIndex: (token, requestOptions = {}) =>
     request("/mitre/index", {
       token,
+      ...requestOptions,
     }),
-  getMitreTechniqueDetail: (token, externalId) =>
+  getMitreTechniqueDetail: (token, externalId, requestOptions = {}) =>
     request(`/mitre/techniques/${encodeURIComponent(externalId)}`, {
       token,
+      ...requestOptions,
     }),
-  listTaxiiSources: (token) => request("/threat-feeds/taxii/sources", { token }),
-  getTaxiiCollections: (token, sourceId) =>
-    request(`/threat-feeds/taxii/sources/${encodeURIComponent(sourceId)}/collections`, { token }),
-  getTaxiiManifest: (token, sourceId, collectionId, params = {}) => {
+  listTaxiiSources: (token, requestOptions = {}) => request("/threat-feeds/taxii/sources", { token, ...requestOptions }),
+  getTaxiiCollections: (token, sourceId, requestOptions = {}) =>
+    request(`/threat-feeds/taxii/sources/${encodeURIComponent(sourceId)}/collections`, { token, ...requestOptions }),
+  getTaxiiManifest: (token, sourceId, collectionId, params = {}, requestOptions = {}) => {
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value) query.set(key, value);
@@ -108,10 +99,10 @@ export const api = {
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return request(
       `/threat-feeds/taxii/sources/${encodeURIComponent(sourceId)}/collections/${encodeURIComponent(collectionId)}/manifest${suffix}`,
-      { token },
+      { token, ...requestOptions },
     );
   },
-  getTaxiiObjects: (token, sourceId, collectionId, params = {}) => {
+  getTaxiiObjects: (token, sourceId, collectionId, params = {}, requestOptions = {}) => {
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value) query.set(key, value);
@@ -119,7 +110,7 @@ export const api = {
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return request(
       `/threat-feeds/taxii/sources/${encodeURIComponent(sourceId)}/collections/${encodeURIComponent(collectionId)}/objects${suffix}`,
-      { token },
+      { token, ...requestOptions },
     );
   },
 };

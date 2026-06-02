@@ -18,6 +18,15 @@ def create_analysis_job(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> AnalysisJobResponse:
     service = AnalysisService(db)
+    if service.rate_limit_exceeded(current_user):
+        AuditService(db).record(
+            action="analysis_job_rate_limited",
+            resource_type="analysis_job",
+            resource_id=current_user.id,
+            actor=current_user,
+        )
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Analysis job quota exceeded.")
     job = service.enqueue(
         user=current_user,
         ioc_type=payload.ioc_type,

@@ -6,20 +6,30 @@ from uuid import uuid4
 from app.db.session import SessionLocal
 from app.models.analysis_job import AnalysisJob
 from app.models.analysis_result import AnalysisResult
+from app.services.intel_enrichment import apply_enrichment
+from app.services.ioc_scoring import apply_scoring
 from app.services.legacy_analysis_adapter import run_legacy_analysis
 from app.workers.celery_app import celery_app
 
 
 def _normalize_verdict(payload: dict[str, object]) -> str:
     level = str(payload.get("level") or "").lower()
-    if level == "alto":
+    if level in {"critical", "high", "alto"}:
         return "high_risk"
-    if level == "médio" or level == "medio":
+    if level in {"medium", "médio", "medio"}:
         return "medium_risk"
     return "low_risk"
 
 
-@celery_app.task(name="socintel.analysis.process")
+@celery_app.task(
+    name="socintel.analysis.process",
+    autoretry_for=(TimeoutError,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+    soft_time_limit=60,
+    time_limit=90,
+)
 def process_analysis_job(job_id: str) -> dict[str, str]:
     db = SessionLocal()
     try:
@@ -30,7 +40,12 @@ def process_analysis_job(job_id: str) -> dict[str, str]:
         job.status = "running"
         db.commit()
 
-        payload = run_legacy_analysis(job.ioc_type, job.ioc_value)
+        payload = apply_enrichment(
+            run_legacy_analysis(job.ioc_type, job.ioc_value),
+            job.ioc_type,
+            job.ioc_value,
+        )
+        payload = apply_scoring(payload, job.ioc_type, job.ioc_value)
         normalized_verdict = _normalize_verdict(payload)
         findings_json = json.dumps(payload["findings"], ensure_ascii=False)
         meta_json = json.dumps(
@@ -41,6 +56,8 @@ def process_analysis_job(job_id: str) -> dict[str, str]:
                 "risk_meta": payload["risk_meta"],
                 "timings_ms": payload["timings_ms"],
                 "provider_details": payload.get("provider_details") or {},
+                "confidence_score": payload.get("confidence_score"),
+                "scoring": payload.get("scoring") or {},
                 "source": "legacy-backend-adapter",
             },
             ensure_ascii=False,
