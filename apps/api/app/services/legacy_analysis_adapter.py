@@ -8,11 +8,16 @@ from typing import Any
 
 from app.core.config import settings
 
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
 
 def _resolve_legacy_repo_path() -> Path:
     if settings.legacy_backend_path:
-        return Path(settings.legacy_backend_path).resolve()
-    return Path(__file__).resolve().parents[5] / "socintel"
+        legacy_path = Path(settings.legacy_backend_path)
+        if legacy_path.is_absolute():
+            return legacy_path.resolve()
+        return (REPO_ROOT / legacy_path).resolve()
+    return REPO_ROOT
 
 
 def _load_legacy_modules():

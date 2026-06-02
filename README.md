@@ -88,7 +88,8 @@ Bootstrap admin credentials:
 
 Legacy adapter path:
 
-- `LEGACY_BACKEND_PATH=/path/to/socintel-legacy-backend`
+- Default in-repo location: `backend/orchestrator.py`
+- Override with `LEGACY_BACKEND_PATH=/path/to/socintel-legacy-backend`
 
 TAXII threat intelligence feed:
 
